@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pylon — propulsion feed-system schematic and flow solver</title>
+<meta name="description" content="Pylon: draw a spacecraft liquid-propulsion feed system and solve it as an incompressible flow network — tube flows and pressure drops, pump curves, bypass-orifice sizing and scenarios.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-deep: #05080f;
+    --bg: #0a0f1c;
+    --panel: #0f1828;
+    --panel-top: #142238;
+    --line: #22324a;
+    --gold-hi: #ffe9a8;
+    --gold: #e0b24f;
+    --gold-mid: #b4842e;
+    --gold-dark: #5a3a0c;
+    --trim: #b8361f;
+    --cyan: #5fd4ff;
+    --cyan-soft: #a9e6ff;
+    --text: #e6f2fb;
+    --muted: #93a6bd;
+    --ok: #7dff8a;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    color: var(--text);
+    background:
+      radial-gradient(1200px 700px at 60% -10%, #1b1546 0%, rgba(27, 21, 70, 0) 60%),
+      linear-gradient(180deg, var(--bg) 0%, var(--bg-deep) 100%);
+    background-color: var(--bg-deep);
+    font: 16px/1.6 Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+    min-height: 100vh;
+  }
+  a { color: var(--cyan); text-decoration: none; }
+  a:hover { color: var(--cyan-soft); text-decoration: underline; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px; }
+
+  /* gold bevel frame, like the app's panels */
+  .frame {
+    position: relative;
+    background: linear-gradient(180deg, var(--panel-top), var(--panel));
+    border-radius: var(--radius);
+    border: 2px solid var(--gold-mid);
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 233, 168, .18),
+      inset 0 0 0 4px rgba(184, 54, 31, .35),
+      0 0 0 1px var(--gold-dark),
+      0 18px 40px rgba(0, 0, 0, .45);
+  }
+  .frame-title {
+    font-family: "Barlow Semi Condensed", "Bahnschrift", sans-serif;
+    font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--gold); font-size: 15px; margin: 0 0 12px;
+    padding-bottom: 6px;
+    background: linear-gradient(90deg, var(--gold-mid), rgba(180, 132, 46, 0)) bottom left / 100% 1px no-repeat;
+  }
+
+  header.top { border-bottom: 1px solid var(--gold-dark); background: rgba(5, 8, 15, .75); position: sticky; top: 0; z-index: 5; backdrop-filter: blur(6px); }
+  header.top .wrap { display: flex; align-items: center; justify-content: space-between; height: 56px; gap: 12px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-family: "Barlow Semi Condensed", sans-serif; font-weight: 700; font-size: 22px; letter-spacing: .06em; color: var(--gold-hi); }
+  .brand svg { flex: none; }
+  nav a { color: var(--muted); margin-left: 18px; font-size: 14px; }
+  nav a:hover { color: var(--text); text-decoration: none; }
+
+  .hero { padding: 56px 0 28px; }
+  .hero h1 {
+    font-family: "Barlow Semi Condensed", sans-serif; font-weight: 700;
+    font-size: clamp(40px, 7vw, 72px); line-height: 1; margin: 0 0 14px; letter-spacing: .02em;
+    background: linear-gradient(180deg, var(--gold-hi), var(--gold) 55%, var(--gold-mid));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .hero p.lede { font-size: clamp(17px, 2.2vw, 20px); color: var(--cyan-soft); max-width: 760px; margin: 0 0 24px; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 12px; }
+  .button {
+    display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; border-radius: 10px;
+    border: 2px solid var(--gold-mid); color: var(--text); font-weight: 600; font-size: 15px;
+    background: linear-gradient(180deg, #1a2c48, #08101c);
+  }
+  .button:hover { border-color: var(--gold-hi); color: var(--gold-hi); text-decoration: none; }
+  .button.primary { border-color: var(--cyan); color: var(--cyan-soft); }
+  .button.primary:hover { color: #fff; border-color: #fff; }
+
+  .shot { margin: 36px 0 8px; padding: 10px; }
+  .shot img { display: block; width: 100%; height: auto; border-radius: 8px; }
+  .caption { color: var(--muted); font-size: 14px; margin: 10px 4px 0; }
+
+  section { padding: 34px 0; }
+  h2 {
+    font-family: "Barlow Semi Condensed", sans-serif; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .08em; color: var(--gold); font-size: 22px; margin: 0 0 18px;
+  }
+  .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+  .card { padding: 18px 18px 16px; }
+  .card h3 { margin: 0 0 6px; font-size: 17px; color: var(--cyan-soft); font-weight: 600; }
+  .card p { margin: 0; color: var(--text); font-size: 15px; }
+
+  .two { display: grid; gap: 16px; grid-template-columns: 1.2fr 1fr; align-items: start; }
+  .two .frame { padding: 18px; }
+  ul.clean { margin: 0; padding-left: 18px; }
+  ul.clean li { margin: 4px 0; }
+  .eq { font-family: "JetBrains Mono", ui-monospace, monospace; color: var(--cyan-soft); white-space: nowrap; }
+
+  pre {
+    margin: 0; padding: 16px; overflow-x: auto; border-radius: 10px;
+    background: #050a14; border: 1px solid var(--line);
+    font: 14px/1.6 "JetBrains Mono", ui-monospace, monospace; color: var(--text);
+  }
+  pre .c { color: var(--muted); }
+
+  .gallery { display: grid; gap: 16px; grid-template-columns: 2fr 1fr; align-items: start; }
+  .gallery .frame { padding: 10px; }
+  .gallery img { display: block; width: 100%; height: auto; border-radius: 8px; }
+
+  footer { border-top: 1px solid var(--gold-dark); margin-top: 24px; padding: 22px 0 40px; color: var(--muted); font-size: 14px; }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between; }
+
+  @media (max-width: 760px) {
+    nav a:not(.gh) { display: none; }
+    .two, .gallery { grid-template-columns: 1fr; }
+    .hero { padding-top: 36px; }
+  }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <div class="brand">
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
+        <rect x="9" y="2" width="8" height="15" rx="4" fill="none" stroke="#5fd4ff" stroke-width="2"/>
+        <line x1="13" y1="17" x2="13" y2="24" stroke="#e0b24f" stroke-width="3"/>
+        <line x1="4" y1="24" x2="22" y2="24" stroke="#e0b24f" stroke-width="3"/>
+      </svg>
+      PYLON
+    </div>
+    <nav>
+      <a href="#features">Features</a>
+      <a href="#physics">Physics</a>
+      <a href="#start">Get started</a>
+      <a class="gh" href="https://github.com/andrewjsheckells-cell/pylon">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="hero">
+    <h1>Pylon</h1>
+    <p class="lede">Draw a spacecraft liquid-propulsion feed system from drag-and-drop components and solve it as a steady, incompressible flow network — every tube's mass flow and pressure drop, pump operating points, bypass-orifice sizing and scenario studies, in one Python program.</p>
+    <div class="buttons">
+      <a class="button primary" href="https://github.com/andrewjsheckells-cell/pylon">View on GitHub</a>
+      <a class="button" href="https://raw.githubusercontent.com/andrewjsheckells-cell/pylon/main/pylon.py">Download pylon.py</a>
+      <a class="button" href="https://github.com/andrewjsheckells-cell/pylon/blob/main/docs/Pylon.md">User guide</a>
+    </div>
+  </div>
+
+  <div class="frame shot">
+    <img src="images/pylon_main_window.png" alt="Pylon main window: component library on the left, a pump-fed hydrazine schematic in the centre with flow and pressure labels on every tube, and results tables on the right." width="1500" height="900">
+    <p class="caption">The built-in example: a blowdown tank feeding a pump, with a bypass orifice back to the pump inlet, a flowmeter and a thruster.</p>
+  </div>
+
+  <section id="features">
+    <h2>Features</h2>
+    <div class="grid">
+      <div class="frame card"><h3>Schematic editor</h3><p>Tank, latch valve, filter, flowmeter, transducer, pump, thruster, orifice, tee and 90° fitting. Click a block's centre to toggle its state; save your own blocks to a reusable library.</p></div>
+      <div class="frame card"><h3>Plumbing that stays clear</h3><p>Orthogonal tubes route around every component. Draw section by section, drag segments, add or delete segments, combine lines and tap one line into another.</p></div>
+      <div class="frame card"><h3>Flow on every tube</h3><p>Mass flow and inlet-to-outlet ΔP beside each tube and component, transducer readings, and warnings when a part exceeds its pressure limits.</p></div>
+      <div class="frame card"><h3>Pump curves</h3><p>Import one curve per RPM from CSV. An ON pump follows its curve at the set speed, so its outlet pressure settles where the pump curve meets the system.</p></div>
+      <div class="frame card"><h3>Sizing and scenarios</h3><p>Size a pump-bypass orifice so pump flow = thruster flow + back flow — per scenario or one diameter for all — and find the lowest pump RPM that meets demand.</p></div>
+      <div class="frame card"><h3>Built for iteration</h3><p>Undo/redo, copy/paste of groups, rotate left/right, show or hide all data (hover to peek, per-item overrides), PNG export.</p></div>
+    </div>
+  </section>
+
+  <section id="physics">
+    <h2>Physics basis</h2>
+    <div class="two">
+      <div class="frame">
+        <p class="frame-title">Models</p>
+        <ul class="clean">
+          <li>Adiabatic, incompressible flow; working fluid hydrazine (1004 kg/m³, 0.90 mPa·s at 25 °C).</li>
+          <li>Tube friction: Darcy–Weisbach with the <b>Churchill (1977)</b> friction factor, laminar through turbulent.</li>
+          <li>Fittings and bends: <b>Crane TP-410</b> K = n·f_T with two-K laminar terms; contraction and expansion at size changes.</li>
+          <li>Valves, filters, flowmeters, thrusters: equivalent sharp-edged orifice, <span class="eq">ṁ = Cd·A·√(2ρΔP)</span>; orifice blocks Cd = 0.6.</li>
+          <li>Thrust <span class="eq">F = ṁ·Isp·g₀</span> into a fixed 0 psia exhaust.</li>
+        </ul>
+      </div>
+      <div class="frame">
+        <p class="frame-title">Solver and checks</p>
+        <ul class="clean">
+          <li>Node pressures and element flows solved together by damped Newton–Raphson with line search.</li>
+          <li>Every equation in the code cites its source.</li>
+          <li><code>--selftest</code> checks orifice flow, Hagen–Poiseuille, Colebrook, the Cv relation, mass balances, orifice sizing and pump-curve interpolation.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Gallery</h2>
+    <div class="gallery">
+      <div class="frame">
+        <img src="images/pylon_data_hidden.png" alt="Pylon with all flow and pressure labels hidden; only the hovered line shows its flow and pressure drop." width="1500" height="900" loading="lazy">
+        <p class="caption">Data hidden for a clean drawing — hover any tube or component to see its numbers.</p>
+      </div>
+      <div class="frame">
+        <img src="images/pylon_pump_closeup.png" alt="Close-up of the pump block showing its speed box in rpm and its flow and pressure-rise result." loading="lazy">
+        <p class="caption">The pump runs on its curve at the speed set on the block.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="start">
+    <h2>Get started</h2>
+    <div class="frame" style="padding:18px">
+<pre><span class="c"># Python 3.9+</span>
+pip install PySide6 numpy
+python pylon.py                        <span class="c"># opens the built-in example</span>
+python pylon.py my_system.pylon.json   <span class="c"># open a saved schematic</span>
+python pylon.py --selftest             <span class="c"># physics and solver checks, no GUI</span></pre>
+      <p class="caption" style="margin-top:12px">Example pump curves: <a href="https://github.com/andrewjsheckells-cell/pylon/blob/main/examples/example_pump_curves.csv">examples/example_pump_curves.csv</a> · Full documentation: <a href="https://github.com/andrewjsheckells-cell/pylon/blob/main/docs/Pylon.md">user guide</a></p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Pylon v1.9 — propulsion feed-system schematic and flow solver</span>
+    <a href="https://github.com/andrewjsheckells-cell/pylon">github.com/andrewjsheckells-cell/pylon</a>
+  </div>
+</footer>
+</body>
+</html>
