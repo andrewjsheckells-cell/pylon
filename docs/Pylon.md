@@ -6,7 +6,7 @@ A PySide6 desktop tool for drawing a spacecraft liquid-propulsion feed-system sc
 
 | | |
 |---|---|
-| Program | `pylon.py` (single file, version 1.14) |
+| Program | `pylon.py` (single file, version 1.15) |
 | Requires | Python ≥ 3.9, `PySide6`, `numpy` |
 | Run | `pip install PySide6 numpy` then `python pylon.py [schematic.pylon.json]` |
 | Solver self-test (no GUI) | `python pylon.py --selftest` |
@@ -48,7 +48,7 @@ The interface uses a dark sci-fi console style taken from the user's reference s
 * **Not copied:** no logos, artwork, fonts or other game assets are included.
 
 ### 2.1 Layout
-* **Left: Component Blocks column.** Enclosed in a gold bezel frame and scrollable when it is taller than the window. *Starting blocks* (the eleven built-in types) come first, then *Saved blocks* (every `.json` in `Component Blocks/`). Click an entry to add it near the centre of the view at a free spot, or drag it to a location. Right-click a saved block to delete it from the library.
+* **Left: Component Blocks column.** Enclosed in a gold bezel frame and scrollable when it is taller than the window. *Starting blocks* (the fourteen built-in types) come first, then *Saved blocks & assemblies* (every `.json` in `Component Blocks/`; a saved assembly shows its parts' symbols and "Assembly · N parts"). Click an entry to add it near the centre of the view at a free spot, or drag it to a location. Right-click a saved entry to delete it from the library.
 * **Centre: schematic canvas.** It has a 20 px dot grid; blocks snap to 10 px. Mouse wheel zooms, middle-drag pans, **F** fits all. Right-click empty canvas for *Add block here*, *Paste here*, *Auto-route all lines* and *Solve now*.
 * **Right: Results and Scenarios tabs** (tabs on top; each panel in its own bezel frame).
   * *Results:* a solver status line, total thruster flow vs nominal, thrust, and the pump balance (pump flow = thruster flow + orifice flow). Below that are a table of every block and line section and a list of warnings. Double-click a row or warning to select that item on the canvas.
@@ -70,9 +70,9 @@ The interface uses a dark sci-fi console style taken from the user's reference s
   * The global setting and the per-element choices are saved in the schematic file.
 
 ### 2.2 Blocks
-* **Ports:** blocks take flow in on the left and send it out on the right. A tee's branch is on the bottom, and a 90° fitting's outlet is on the bottom. The **tank** is the exception: its **inlet is on the top** (fill or pressurant connection) and its **outlet is on the bottom**. Rotate 90° turns any block, ports included.
+* **Ports:** blocks take flow in on the left and send it out on the right. A tee's branch is on the bottom, and a 90° fitting's outlet is on the bottom. The **tank** is the exception: its **inlet is on the top** (fill or pressurant connection) and its **outlet is on the bottom**. A **COPV** has a single outlet on the bottom. Rotate 90° turns any block, ports included.
 * **Move:** drag the body (multi-select with Ctrl-click or a rubber band).
-* **Toggle state:** click the centre zone of the block (the cursor becomes a pointing hand). Two-state blocks switch between their two states; the tank cycles Nominal → Maximum → Minimum pressure. **Tees, crosses and 90° fittings have no toggle**: they are always open, show no state caption, and have no State menu or state field.
+* **Toggle state:** click the centre zone of the block (the cursor becomes a pointing hand). Two-state blocks switch between their two states; the tank cycles Nominal → Maximum → Minimum pressure. **Tees, crosses, 90° fittings and fill & drain valves have no toggle**: fittings are always open, a fill & drain valve is always a dead end; none of them shows a state caption, a State menu or a state field.
 * **Right-click menu:** Properties…, State ▸ (pick any state directly), Rotate right 90° / Rotate left 90°, *Pump curves…* and *Find lowest RPM…* (pumps), *Size this orifice…* (orifices), *Show flow / pressure data here*, **Copy**, **Duplicate Block**, **Save Block…**, **Delete Block**. (Tees and 90° fittings have no State entry.)
 * **Double-click** the body to open Properties. Calculated values appear read-only at the bottom of the dialog.
 * **Pump speed on the block:** when a pump is ON, its speed (rpm) appears in an editable box on the block. Click it, type a value and press Enter. The pump's flow then comes from its imported curves at that speed.
@@ -88,6 +88,21 @@ The interface uses a dark sci-fi console style taken from the user's reference s
   * The copy is also put on the system clipboard, so it can be pasted into a second window of the program.
   * While a text field (including the pump's flowrate box on the block) has the keyboard, these keys act on the text instead.
 * **Keyboard:** Ctrl+Z undoes and Ctrl+Y (or Ctrl+Shift+Z) redoes; Delete removes the selection; Ctrl+C copies, Ctrl+V / Ctrl+P pastes, Ctrl+D duplicates the selection (blocks plus the lines between them) in one step; R rotates right and Shift+R rotates left; D shows/hides the flow and pressure data; S selects, L draws lines, Esc cancels or clears.
+
+### 2.2a Assemblies (saved groups of parts)
+An **assembly** is a group of connected parts, fittings and the tubes between them that is kept, moved and saved as one block, e.g. a filter + latch valve feed module or a thruster with its flowmeter.
+* **Create:** select the parts (Ctrl-click or rubber band), right-click one of them → *Save selection as assembly…* and give it a name. The tubes between the selected parts join the assembly automatically (same rule as Copy). The assembly is created **locked** and is also written to the library (`Component Blocks/<name>.json`), where it appears in the left column.
+* **Outline:** every assembly is drawn with a dashed rounded outline around its parts and a tag "name · locked" (gold, padlock closed) or "name · unlocked" (cyan, padlock open). The outline is not an obstacle for lines.
+* **Locked** (behaves as one block):
+  * clicking any part selects the whole assembly; dragging moves it rigidly, its own tubes carried along unchanged; lines to the outside follow and re-route as usual;
+  * rotating a part, or dragging an internal tube's segments or ends, is refused (the status bar says so). Because the whole assembly is selected, Delete removes the whole assembly: the block menu's Delete becomes *Delete assembly*, and an internal tube's menu is reduced to Copy, Properties, data visibility, the Assembly submenu and *Delete assembly*;
+  * opening Properties or Pump curves on a part asks *Unlock it to modify its parts?*: Yes unlocks the assembly and opens the dialog;
+  * **state toggles still work** (open/close a valve inside a locked module), and external lines can still be connected to its ports.
+* **Unlocked:** every part and tube is edited, moved, rotated, re-routed or deleted individually, exactly like loose items; the outline follows the parts.
+* **Assembly submenu** (right-click any member): *Unlock* / *Lock*, *Add N selected items to this assembly* (unlocked only), *Remove this item from the assembly* (unlocked only), *Rename…*, *Save to library…* (writes or overwrites the library entry with the assembly as it is now) and *Dissolve (keep the parts)*.
+* **From the library:** click or drag a saved assembly to place a fresh copy as a new **locked** assembly with new block names (incremented as for copies) and the name incremented ("Feed module" → "Feed module 1"). All properties, states, orientations, pump curves and internal tubes are restored.
+* **Copy/paste and duplicate** of an assembly makes a new assembly (name incremented); copying some loose items together with an assembly keeps the loose ones loose.
+* Deleting all of an assembly's members removes the assembly. Assemblies, their names and lock state are saved in the schematic file and are part of undo/redo. They have no effect on the flow solution.
 
 ### 2.3 Plumbing lines
 * **Auto-routed lines:** drag from a port and release on another port or on a line. The route is an orthogonal A* search [HART] on the 10 px grid that treats every block body (plus 10 px clearance) and every other port as an obstacle, with a penalty for bends. It leaves each port straight out in the port's direction.
@@ -124,9 +139,12 @@ Property names in the table are the labels shown in the Properties dialog; the `
 | Block | Ports | Toggle states (click centre) | Editable properties | Calculated properties |
 |---|---|---|---|---|
 | Tank | inlet (top), outlet (bottom) | Nominal pressure / Maximum pressure / Minimum pressure | Volume [L] `volume`; Maximum pressure [psia] `maximum_pressure`; Nominal pressure [psia] `nominal_pressure`; Minimum pressure [psia] `minimum_pressure`; Inlet tubing size (top) `inlet_tubing_size`; Outlet tubing size (bottom) `outlet_tubing_size` | Tank pressure (current state) [psia] `calculated_pressure`; Inflow through the top inlet [g/s] `calculated_inflow`; Net outflow [g/s] `calculated_net_outflow`; Time to empty at the current net outflow [s] `calculated_time_to_empty` |
+| COPV (`copv`) | outlet (bottom) | Backfilling / Isolated | Volume [L] `volume`; Bottle pressure [psia] `bottle_pressure`; Maximum pressure (MEOP) [psia] `maximum_pressure`; Ullage pressure setpoint (regulated) [psia] `ullage_pressure_setpoint` (0 = unregulated, full bottle pressure); Outlet tubing size `outlet_tubing_size` | Ullage pressure delivered [psia] `calculated_delivered_pressure`; Tanks backfilled `calculated_tanks_backfilled`; Ullage backfill volume flow [mL/min] `calculated_backfill_volume_flow` |
 | Latch Valve | inlet, outlet | Open / Closed | Equivalent orifice diameter, open state [in] `open_orifice_diameter`; Equivalent orifice diameter, closed state (leak) [in] `closed_orifice_diameter`; Discharge coefficient `discharge_coefficient`; Flow coefficient Cv (open) [gpm/√psi] `flow_coefficient`; Inlet tubing size `inlet_tubing_size`; Outlet tubing diameter `outlet_tubing_size`; Maximum pressure [psia] `maximum_pressure` | Inlet pressure; Outlet pressure; Pressure drop; Mass flow (`calculated_inlet_pressure`, `calculated_outlet_pressure`, `calculated_pressure_drop`, `calculated_mass_flow`) |
+| Fluid Coupling (`fluid_coupling`) | inlet, outlet | Open / Closed | Equivalent orifice diameter (open, flow restriction) [in] `orifice_diameter`; Discharge coefficient `discharge_coefficient`; Flow coefficient Cv (open) `flow_coefficient`; Inlet tubing size; Outlet tubing size; Maximum pressure [psia] `maximum_pressure` | Inlet pressure; Outlet pressure; Pressure drop; Mass flow |
 | Filter | inlet, outlet | Clean / Maximum trapped particles | Equivalent orifice diameter, no trapped particles [in] `clean_orifice_diameter`; Equivalent orifice diameter, maximum trapped particles [in] `clogged_orifice_diameter`; Discharge coefficient `discharge_coefficient`; Flow coefficient Cv (clean) `clean_flow_coefficient`; Flow coefficient Cv (maximum trapped) `clogged_flow_coefficient`; Maximum pressure [psia] `maximum_pressure`; Inlet tubing size; Outlet tubing size | Inlet pressure; Outlet pressure; Pressure drop; Mass flow |
 | Flowmeter | inlet, outlet | Flowing / Blocked | Equivalent orifice diameter [in] `orifice_diameter`; Flow coefficient Cv `flow_coefficient`; Discharge coefficient `discharge_coefficient`; Maximum pressure [psia] `maximum_pressure`; Inlet tubing size; Outlet tubing size | Inlet pressure; Outlet pressure; Pressure drop; Measured mass flow |
+| Fill & Drain Valve (`fill_drain_valve`) | inlet, outlet | — (no toggle; always a closed dead end) | Inlet tubing size; Outlet tubing size; Maximum pressure [psia] `maximum_pressure` | Inlet pressure; Outlet pressure (each port reads its own side) |
 | Pressure Transducer | inlet (bottom) | ON / OFF | Inlet tubing size `inlet_tubing_size` | Pressure reading [psia] `calculated_pressure` (shown under the block) |
 | Pump | inlet, outlet | ON / OFF | Speed [rpm] `revolutions_per_minute` (also editable on the block); Inlet tubing size; Outlet tubing size; Equivalent orifice diameter (stopped) [in] `stopped_orifice_diameter`; Discharge coefficient (stopped) `stopped_discharge_coefficient`; Flow coefficient Cv (stopped) `stopped_flow_coefficient`; Maximum inlet pressure `maximum_inlet_pressure`; Minimum inlet pressure `minimum_inlet_pressure`; Maximum outlet pressure [psia] `maximum_outlet_pressure`; Maximum differential pressure [psid] `maximum_differential_pressure`; imported RPM curves `pump_curves` | Inlet pressure; Outlet pressure; Pressure rise `calculated_pressure_rise`; Mass flow [g/s]; Volumetric flow [mL/min] `calculated_volumetric_flow` |
 | Thruster | inlet | ON / OFF | Specific impulse [s] `specific_impulse`; Nominal inlet pressure [psia] `nominal_inlet_pressure`; Maximum inlet pressure [psia] `maximum_inlet_pressure`; Equivalent orifice diameter [in] `orifice_diameter`; Discharge coefficient; Flow coefficient Cv; Inlet tubing size | Outlet pressure (hard-coded 0 psia); Inlet pressure; Flowrate [g/s]; Thrust [N] `calculated_thrust`; Flowrate and thrust at nominal inlet pressure `calculated_nominal_mass_flow`, `calculated_nominal_thrust` |
@@ -139,6 +157,9 @@ Property names in the table are the labels shown in the Properties dialog; the `
 Notes
 * **ESEOD (equivalent sharp-edged orifice diameter) / Cv / Cd are linked.** Editing the diameter or Cd recalculates Cv, and editing Cv recalculates the diameter (with Cd held), using `Cv = 29.84 · Cd · d²` (d in inches, water at 60 °F) [ISA].
 * **Latch valve closed:** no flow when the closed-state ESEOD is 0, otherwise a leak orifice. **Flowmeter blocked**, **orifice OFF** and **thruster OFF** carry no flow. Tees and 90° fittings are always open; a tee or fitting saved as OFF by an earlier version opens as open. **Transducer OFF** hides its reading.
+* **COPV:** connect its outlet to a tank's **top inlet** through lines and open components. While *Backfilling* it holds that tank's ullage at the setpoint (or at the bottle pressure if the setpoint is 0 or above the bottle pressure), and the tank's *Nominal / Maximum / Minimum* state pressure is overridden. The tank shows "COPV backfill · X psia" and its result label reads "X psia (COPV)". *Isolated* returns the tank to its own state pressure. Pressurant passes through tees, crosses, 90° fittings and filters, and through latch valves, fluid couplings, flowmeters and orifices only when they are open; a closed one (or a pump, thruster, transducer or fill & drain valve) blocks it. With two COPVs on one tank the higher pressure wins. The pressurant lines carry no liquid, so they show 0 g/s.
+* **Fluid coupling:** *Open* = mated coupling with its flow restriction as an equivalent orifice; *Closed* = demated / capped, no flow.
+* **Fill & drain valve:** symbolic only. It connects like any in-line component but is a closed service port: each side is a dead end (no flow), and it reads the pressure on each side, like a transducer.
 * **Pump OFF** acts as an orifice with the stopped-state ESEOD and Cd.
 * **Pump ON always follows its imported RPM curves** (since v1.9; the earlier fixed-flowrate mode was removed because it forced the set flow through whatever pressure that took, which drove the outlet pressure far too high whenever the downstream restriction did not match). The flow comes from the curve for the set speed as a function of the pump ΔP, so the outlet pressure settles where the pump curve meets the system. The flowrate is a calculated result, shown on the block's result plate and in Properties.
 * **Pump ON with no curves** is solved as stopped (the stopped-state orifice) and flagged with a warning badge: import curves with right-click → *Pump curves…*.
@@ -180,14 +201,17 @@ For a tube of inner diameter D, length L, area A, mass flow ṁ, velocity V = �
 ### 4.3 Components
 | Component | Model |
 |---|---|
-| Valve, filter, flowmeter, stopped pump, thruster | Equivalent sharp-edged orifice: `ṁ = Cd·A·√(2ρΔp)`, A = π·ESEOD²/4 [SUTTON], [CRANE] |
+| Valve, fluid coupling, filter, flowmeter, stopped pump, thruster | Equivalent sharp-edged orifice: `ṁ = Cd·A·√(2ρΔp)`, A = π·ESEOD²/4 [SUTTON], [CRANE] |
 | Orifice block | Same, with Cd = 0.6 (setting) |
 | Thruster | Orifice from the inlet node to a fixed 0 psia boundary. Thrust F = ṁ·Isp·g₀ [SUTTON], g₀ = 9.80665 m/s² [NIST811]. Nominal flow = flow at the nominal inlet pressure. |
-| Tank | **Blowdown pressure source.** The tank is a fixed-pressure boundary at the pressure of the selected state (nominal / max / min, i.e. points on the blowdown curve), and that pressure is what pushes propellant from the tank to the pump inlet. The pump then sets the flow to everything downstream; with the pump OFF it is an orifice and tank pressure alone drives the flow through it. Bottom outlet: entrance loss K = 0.5 for outflow, exit K = 1.0 for back-flow, on the outlet-tube area. Top inlet: exit K = 1.0 for flow into the tank, entrance K = 0.5 for reverse flow, on the inlet-tube area. An unconnected top inlet carries no flow. |
+| Tank | **Blowdown pressure source.** The tank is a fixed-pressure boundary at the pressure of the selected state (nominal / max / min, i.e. points on the blowdown curve), and that pressure is what pushes propellant from the tank to the pump inlet. The pump then sets the flow to everything downstream; with the pump OFF it is an orifice and tank pressure alone drives the flow through it. Bottom outlet: entrance loss K = 0.5 for outflow, exit K = 1.0 for back-flow, on the outlet-tube area. Top inlet: exit K = 1.0 for flow into the tank, entrance K = 0.5 for reverse flow, on the inlet-tube area. An unconnected top inlet carries no flow. **With a backfilling COPV on the top inlet** the boundary pressure is the COPV's delivered ullage pressure instead of the state pressure. |
 | Tee | Three arms meeting at a centre node. Crane through-run 20 f_T and through-branch 60 f_T are split so in + out = 20 f_T and in + branch = 60 f_T. Laminar K₁: run 200, branch 500. |
 | Cross | Four arms meeting at a centre node. Crane TP-410 gives no separate cross coefficient, so the cross uses the tee values: inlet and outlet arms 10 f_T each (run = 20 f_T), each branch arm 50 f_T (inlet + branch = 60 f_T); laminar K₁ likewise (run 200, branch 500). The tee settings in *Fluid and loss coefficients…* apply to crosses too. |
 | 90° fitting | Crane standard elbow K∞ = 30 f_T, laminar K₁ = 800, plus area change if inlet and outlet sizes differ |
 | Pressure transducer | Dead-end pressure tap: reads the node pressure where it is connected |
+| COPV | **Ullage pressure source, not a flow element.** An ideal regulator (regulated pressure feed [SUTTON]) holds the connected tank's ullage at p = min(setpoint, bottle pressure), or the bottle pressure when the setpoint is 0. The connection is found by a separate union-find over lines and components that pass gas (see Notes in §3). Because the liquid is incompressible, the gas volume flow into the ullage equals the liquid volume flow leaving the tank: Q_gas = (ṁ_out − ṁ_in)/ρ, reported in mL/min. Bottle blow-down is not modelled (steady state). |
+| Fluid coupling | Open: equivalent sharp-edged orifice with its own ESEOD and Cd (the coupling's flow restriction). Closed: no flow. |
+| Fill & drain valve | No element. Its two ports are separate dead-end nodes: no flow passes, and each port reads the node pressure on its side. |
 | Pump ON | ṁ = ρ·Q(Δp_pump, N), with N the set speed: the operating point is where the pump curve meets the system curve; inlet pressure = tank pressure − upstream losses. At a stored RPM the curve is piecewise linear in Δp with linear extrapolation. **Between two stored RPMs** N_low < N < N_high it interpolates linearly in speed at the same Δp: Q = (1 − w)·Q_low(Δp) + w·Q_high(Δp), w = (N − N_low)/(N_high − N_low) (exact for a positive-displacement pump, Q = displacement·N − slip(Δp)). **Outside the stored range** it uses the nearest end curve and lists a warning. |
 
 **How ESEOD is used.** The equivalent sharp-edged orifice diameter (ESEOD) is an **input**, not something the solver derives from upstream conditions. It is the diameter of the sharp-edged orifice that would pass the same flow as the component at the same pressure drop.
@@ -262,6 +286,9 @@ For an orifice in parallel with the pump (one side on the pump-outlet manifold, 
 * that the A* route clears an obstacle;
 * that a version 2 file is upgraded to version 3 with every key renamed;
 * that a cross with identical loads on its outlet and both branches balances and splits the branch flows equally;
+* that a backfilling COPV sets the tank ullage to its setpoint, an isolated COPV leaves the tank at its own pressure, and a closed coupling between them blocks the backfill;
+* that an open fluid coupling in series with a thruster passes the series equivalent-orifice flow;
+* that a fill & drain valve in a feed line passes no flow and reads the upstream pressure;
 * that copy names increment the last number (with zero padding), add " 1" when there is none, and skip names in use;
 * that a pump at a speed between two stored curves interpolates correctly (3500 rpm between 3000 and 4000 rpm gear-pump curves gives 396 mL/min at 200 psid), and that a speed outside the stored curves is reported.
 
@@ -288,17 +315,21 @@ For an orifice in parallel with the pump (one side on the pump-outlet manifold, 
  "scenarios": [{"name": "Nominal", "blocks": {"<identifier>": {"state": 0, "properties": {}}},
                 "lines": {"<identifier>": {"properties": {}}}}],
  "active_scenario": "Nominal",
+ "assemblies": [{"identifier": "a7f3c2", "name": "Feed module", "locked": true}],
  "view": {"show_data_labels": true}}
 ```
 * Ports are named `inlet`, `outlet` and `branch`.
 * `path_fraction` is the fractional position along the target line's drawn path.
 * Line `points` are in scene pixels and are not used by the flow calculation.
 * Files from v1.8 and earlier may contain the pump keys `operating_model` and `flow_rate`; they are dropped on load (the pump then follows its curves).
+* A block or line that belongs to an assembly carries `"assembly": "<assembly identifier>"`; `assemblies` lists each assembly's name and lock state. Both are absent in files without assemblies.
 * `view.show_data_labels` is the global data-label switch. A block or line may carry `"data_label_visibility": true/false` when it has its own override; the key is absent when it follows the global switch.
 * **Older files open automatically.** Version 1 and 2 files (format `propschematic`, abbreviated keys such as `props`, `rho`, `p_max`, `eseod`, `od`, ports `in`/`out`, attachment `t`) are converted to version 3 on load by `upgrade_model()`, and are written back as version 3 when saved.
 * When a file is opened and a line's end no longer sits on its port (e.g. a version 1 file whose tank outlet was on the right side), that line is re-routed automatically to the port's current position.
 
 **Saved block (`Component Blocks/<name>.json`):** `{"format": "pylon_block", "version": 3, "name", "type", "state", "orientation", "properties", "pump_curves"}`. Saved blocks from earlier versions (`props`, `curves`, `orient`) are upgraded by `upgrade_block_template()` when the column is loaded.
+
+**Saved assembly (`Component Blocks/<name>.json`):** `{"format": "pylon_assembly", "version": 3, "name", "blocks", "lines", "assemblies": {"assembly": {"name", "locked": true}}}`. `blocks` and `lines` are in the clipboard form (every member has `"assembly": "assembly"`); placing it maps them to new identifiers and names, like a paste.
 
 ## 7. Assumptions and limitations
 * Steady state only. No transients, water hammer, priming or tank blow-down; tank volume is used only for the time-to-empty estimate.
@@ -436,7 +467,9 @@ LOOK AND FEEL (dark sci-fi console style; no game assets, logos or fonts copied)
 
 LAYOUT
 - Left dock "Component Blocks": a bezel-framed, vertically scrolling column. "Starting blocks" lists the
-  eleven built-in types with drawn symbols; "Saved blocks" lists every .json file in a "Component Blocks"
+  fourteen built-in types with drawn symbols (order: tank, COPV, latch valve, fluid coupling, filter,
+  flowmeter, fill & drain valve, transducer, pump, thruster, orifice, tee, cross, 90° fitting); "Saved
+  blocks & assemblies" lists every .json file (pylon_block or pylon_assembly) in a "Component Blocks"
   folder next to the script. Clicking an entry adds that block at a free spot near the view centre;
   dragging it drops it at the cursor. Right-clicking a saved entry deletes the file.
 - Centre: QGraphicsView canvas with a 20 px dot grid; blocks snap to 10 px. Wheel zooms, middle-drag
@@ -517,6 +550,20 @@ and symbol rotate; text stays upright).
 - Save Block writes {format: pylon_block, version: 3, name, type, state, orientation, properties,
   pump_curves} JSON to the folder.
 - Blocks with warnings get a red border, a "!" badge and tooltip text.
+- Assemblies: scene.assemblies = {identifier: {name, locked}}; each block/line has assembly_identifier.
+  Right-click a selection → "Save selection as assembly…" (name prompt; the connecting lines found by
+  the copy rule join; created locked and written to the library as pylon_assembly). Each assembly
+  draws an AssemblyOutlineItem: dashed rounded rect padded 12 px around its members, gold + closed
+  padlock + "name · locked", or cyan + open padlock + "name · unlocked"; not an obstacle.
+  Locked: selecting a member selects all members; dragging moves them rigidly (the anchor block
+  translates the internal lines; external lines follow and re-route); rotate and internal segment/end
+  drags are refused with a status message; Delete removes the whole assembly; Properties / Pump curves ask to unlock
+  first; state toggles and external connections still work; menus offer "Delete assembly".
+  Unlocked: members behave as loose items. Assembly submenu: Unlock/Lock, Add N selected items,
+  Remove this item, Rename…, Save to library…, Dissolve (keep the parts). Placing a library assembly
+  or pasting one creates a new locked assembly with incremented block and assembly names. Assemblies
+  with no members are removed. Saved in the schematic (assemblies list + per-item "assembly") and in
+  undo/redo; no effect on the physics.
 Types (editable properties; [states]; calculated). Code keys are the full names given in the
 Components table of the user guide (e.g. open_orifice_diameter, flow_coefficient, maximum_pressure).
 - Tank: 200x400 footprint (4x the earlier tank); 176x280 vertical capsule with a fill level per state,
@@ -524,6 +571,17 @@ Components table of the user guide (e.g. open_orifice_diameter, flow_coefficient
   BOTTOM edge, state and pressure written inside; volume L, max/nominal/min pressure psia, inlet tubing size, outlet tubing size;
   [Nominal pressure, Maximum pressure, Minimum pressure]; pressure, inflow through the top inlet,
   net outflow, time to empty.
+- COPV: 100x140, single outlet port on the bottom edge; volume L, bottle pressure, maximum pressure
+  (MEOP), ullage pressure setpoint (0 = unregulated), outlet tubing; [Backfilling, Isolated]; delivered
+  ullage pressure, tanks backfilled, ullage backfill volume flow mL/min. Symbol: vertical capsule with
+  diagonal overwrap hatching clipped to the bottle and a pipe to the outlet. Label "ullage X psia → N
+  tank(s)" or "isolated". Warnings: bottle above MEOP, setpoint above bottle pressure, not connected
+  to a tank inlet.
+- Fluid Coupling: ESEOD (open, flow restriction) 0.125 in, Cd, Cv, in/out tubing, max pressure;
+  [Open, Closed]; pressures, ΔP, flow. Symbol: two coupling halves mated (open) or apart with sealed
+  faces (closed).
+- Fill & Drain Valve: in/out tubing, max pressure; single state "Closed (dead end)", no toggle;
+  inlet/outlet pressure. Symbol: filled bow-tie valve with a T handle. Label "dead end · X psia".
 - Latch Valve: ESEOD open, ESEOD closed (leak, 0 = tight), Cd, Cv, inlet/outlet tubing, max pressure;
   [Open, Closed]; pressures, ΔP, flow.
 - Filter: ESEOD clean, ESEOD max trapped, Cd, Cv clean, Cv dirty, max pressure, in/out tubing;
@@ -595,7 +653,12 @@ PHYSICS
   0 psia node.
 - Tank: fixed-pressure node for the selected state. Bottom outlet: entrance K 0.5 (outflow) / exit
   K 1.0 (back-flow). Top inlet: exit K 1.0 (into the tank) / entrance K 0.5 (reverse), on the
-  inlet-tube area.
+  inlet-tube area. A tank whose top inlet reaches a Backfilling COPV (union-find over lines and gas-
+  passing blocks: tee, cross, elbow, filter always; latch valve, fluid coupling, flowmeter, orifice when
+  open) is held at the COPV's delivered pressure min(setpoint, bottle) (bottle if setpoint 0); highest
+  COPV wins. The COPV adds no flow element; backfill volume flow = (tank outflow − inflow)/ρ.
+- Fluid coupling: ESEO element when open, no flow when closed. Fill & drain valve: no element; each
+  port is its own dead-end node.
 - Tee: three arms to a centre node; Crane run 20 f_T and branch 60 f_T split so in+out = run and
   in+branch = branch; laminar K1 200 run and 500 branch.
 - 90° fitting: 30 f_T + 800/Re, plus area change if sizes differ.
@@ -614,7 +677,7 @@ PHYSICS
   - Network issues for a block (pump without curves, speed outside its curves) are listed in the
     warnings and also badge the block.
 - Warnings: component max pressure, pump inlet min/max, outlet max and ΔP max, thruster max inlet
-  pressure, negative absolute pressure.
+  pressure, negative absolute pressure, tank backfilled above its max pressure, COPV warnings.
 - Auto-solve runs 150 ms after any change that affects the physics.
 
 SCENARIOS
@@ -644,7 +707,9 @@ FILES
   format names propulsion_schematic / propulsion_block / propulsion_clipboard still open): fluid {name, density,
   viscosity_millipascal_seconds}, settings, blocks {identifier, type, name, x, y, orientation, state,
   properties, pump_curves}, lines {identifier, name, points, start, end, properties, auto_routed},
-  scenarios, active_scenario. Ports are inlet/outlet/branch; line attachments use path_fraction.
+  scenarios, active_scenario, assemblies [{identifier, name, locked}] (blocks/lines carry "assembly").
+  Ports are inlet/outlet/branch (cross: upper_branch/lower_branch); line attachments use path_fraction.
+- Saved assembly: {format: pylon_assembly, version 3, name, blocks, lines, assemblies}.
 - upgrade_model() converts version 1/2 files (abbreviated keys) to version 3 on load, and
   upgrade_block_template() does the same for saved blocks. On load, any line whose end is not on its
   port's current position is re-routed (older files).
@@ -683,3 +748,4 @@ CODE CONVENTIONS
 | 1.12 | 2026-10-13 | Cross fitting added: four ports (inlet, outlet, upper and lower branches), tube sizes per port, tee-based Crane/two-K arm losses, per-port flows; no toggle. Blocks with ports on all four edges place their name upper-left and results upper-right. Self-test check added. |
 | 1.13 | 2026-10-13 | Labels moved close to their components, inside each block's invisible box: name just above the symbol, state caption / pump RPM row and results just below, or on a free side where an edge has a port. Tank labels sit inside the capsule. Latch valve, flowmeter, filter, orifice, thruster and pump footprints made taller so the labels fit; side port positions unchanged. |
 | 1.14 | 2026-10-13 | Copied or duplicated blocks are named from the original: the last number in the name + 1 (LV-1 → LV-2), or " 1" added when there is no number, counting on past names in use. Self-test check added. |
+| 1.15 | 2026-10-13 | New blocks: **COPV** (pressurant bottle; while backfilling it holds a connected tank's ullage at its regulated setpoint or bottle pressure, through open lines and components), **Fluid Coupling** (open with an equivalent-orifice flow restriction, or closed) and **Fill & Drain Valve** (symbolic; each side is a dead end). **Assemblies:** save a selection of connected parts and their tubes as a named group, lock it to move and select it as one block or unlock it to modify the parts, save it to the library and place copies. Self-test checks added. |

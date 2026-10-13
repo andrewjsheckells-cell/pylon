@@ -83,7 +83,7 @@ import uuid
 import numpy
 
 APPLICATION_NAME = "Pylon"
-APPLICATION_VERSION = "1.14"
+APPLICATION_VERSION = "1.15"
 FILE_FORMAT_VERSION = 3
 
 # =============================================================================
@@ -338,6 +338,24 @@ BLOCK_TYPES = {
                     _calculated_property('calculated_net_outflow', 'Net outflow', 'g/s'),
                     _calculated_property('calculated_time_to_empty', 'Time to empty at current outflow', 's')],
         flow_coefficient_links=[]),
+    'copv': dict(
+        # composite overwrapped pressure vessel: pressurant bottle that backfills tank ullage
+        label='COPV', prefix='COPV', size=(100, 140),
+        symbol_extent=(55, 70, 30, 30), color='#8e7cc3',   # extent: symbol reach up/down/left/right
+        ports={'outlet': (0, 70, 0, 1)},
+        states=['Backfilling', 'Isolated'],
+        properties=[PropertyDefinition('volume', 'Volume', 'L', 10.0),
+                    PropertyDefinition('bottle_pressure', 'Bottle pressure', 'psia', 3000.0),
+                    PropertyDefinition('maximum_pressure', 'Maximum pressure (MEOP)', 'psia', 4500.0),
+                    PropertyDefinition('ullage_pressure_setpoint', 'Ullage pressure setpoint (regulated)', 'psia',
+                                       50.0, tooltip='Pressure the COPV holds in the tank ullage. '
+                                                     '0 = unregulated (full bottle pressure).'),
+                    _tube_property('outlet_tubing_size', 'Outlet tubing size'),
+                    _calculated_property('calculated_delivered_pressure', 'Ullage pressure delivered', 'psia'),
+                    _calculated_property('calculated_tanks_backfilled', 'Tanks backfilled', ''),
+                    _calculated_property('calculated_backfill_volume_flow', 'Ullage backfill volume flow',
+                                         'mL/min')],
+        flow_coefficient_links=[]),
     'latch_valve': dict(
         label='Latch Valve', prefix='LV', size=(120, 100),
         symbol_extent=(25, 13, 22, 22), color='#7a4fb0',   # extent: symbol reach up/down/left/right
@@ -357,6 +375,37 @@ BLOCK_TYPES = {
                     _calculated_property('calculated_pressure_drop', 'Pressure drop', 'psid'),
                     _calculated_property('calculated_mass_flow', 'Mass flow', 'g/s')],
         flow_coefficient_links=[('open_orifice_diameter', 'flow_coefficient', 'discharge_coefficient')]),
+    'fluid_coupling': dict(
+        # quick-disconnect style coupling: open (connected) with a flow restriction, or closed
+        label='Fluid Coupling', prefix='FC', size=(120, 90),
+        symbol_extent=(9, 9, 24, 24), color='#3a7d9c',   # extent: symbol reach up/down/left/right
+        ports={'inlet': (-60, 0, -1, 0), 'outlet': (60, 0, 1, 0)},
+        states=['Open', 'Closed'],
+        properties=[PropertyDefinition('orifice_diameter', 'Equivalent orifice diameter (open, flow restriction)',
+                                       'in', 0.125),
+                    PropertyDefinition('discharge_coefficient', 'Discharge coefficient', '', 0.6),
+                    PropertyDefinition('flow_coefficient', 'Flow coefficient Cv (open)', 'gpm/√psi', 0.0,
+                                       tooltip='Linked to the equivalent orifice diameter and discharge coefficient'),
+                    _tube_property('inlet_tubing_size', 'Inlet tubing size'),
+                    _tube_property('outlet_tubing_size', 'Outlet tubing size'),
+                    PropertyDefinition('maximum_pressure', 'Maximum pressure', 'psia', 400.0),
+                    _calculated_property('calculated_inlet_pressure', 'Inlet pressure', 'psia'),
+                    _calculated_property('calculated_outlet_pressure', 'Outlet pressure', 'psia'),
+                    _calculated_property('calculated_pressure_drop', 'Pressure drop', 'psid'),
+                    _calculated_property('calculated_mass_flow', 'Mass flow', 'g/s')],
+        flow_coefficient_links=[('orifice_diameter', 'flow_coefficient', 'discharge_coefficient')]),
+    'fill_drain_valve': dict(
+        # symbolic service valve: connects like a component but passes no flow (dead end each side)
+        label='Fill & Drain Valve', prefix='FDV', size=(120, 90),
+        symbol_extent=(18, 13, 22, 22), color='#7f8c8d',   # extent: symbol reach up/down/left/right
+        ports={'inlet': (-60, 0, -1, 0), 'outlet': (60, 0, 1, 0)},
+        states=['Closed (dead end)'],
+        properties=[_tube_property('inlet_tubing_size', 'Inlet tubing size'),
+                    _tube_property('outlet_tubing_size', 'Outlet tubing size'),
+                    PropertyDefinition('maximum_pressure', 'Maximum pressure', 'psia', 400.0),
+                    _calculated_property('calculated_inlet_pressure', 'Inlet pressure', 'psia'),
+                    _calculated_property('calculated_outlet_pressure', 'Outlet pressure', 'psia')],
+        flow_coefficient_links=[]),
     'filter': dict(
         label='Filter', prefix='FL', size=(120, 110),
         symbol_extent=(19, 19, 20, 20), color='#2f8f6a',   # extent: symbol reach up/down/left/right
@@ -504,11 +553,15 @@ BLOCK_TYPES = {
                     _calculated_property('calculated_mass_flow', 'Mass flow', 'g/s')],
         flow_coefficient_links=[]),
 }
-BLOCK_ORDER = ['tank', 'latch_valve', 'filter', 'flowmeter', 'transducer', 'pump',
+BLOCK_ORDER = ['tank', 'copv', 'latch_valve', 'fluid_coupling', 'filter', 'flowmeter', 'fill_drain_valve',
+               'transducer', 'pump',
                'thruster', 'orifice', 'tee', 'cross', 'elbow']
 
 PORT_TUBING_PROPERTY = {
     'tank': {'inlet': 'inlet_tubing_size', 'outlet': 'outlet_tubing_size'},
+    'copv': {'outlet': 'outlet_tubing_size'},
+    'fluid_coupling': {'inlet': 'inlet_tubing_size', 'outlet': 'outlet_tubing_size'},
+    'fill_drain_valve': {'inlet': 'inlet_tubing_size', 'outlet': 'outlet_tubing_size'},
     'latch_valve': {'inlet': 'inlet_tubing_size', 'outlet': 'outlet_tubing_size'},
     'filter': {'inlet': 'inlet_tubing_size', 'outlet': 'outlet_tubing_size'},
     'flowmeter': {'inlet': 'inlet_tubing_size', 'outlet': 'outlet_tubing_size'},
@@ -589,6 +642,63 @@ TANK_PRESSURE_KEY_BY_STATE = ['nominal_pressure', 'maximum_pressure', 'minimum_p
 
 def tank_pressure_psia(properties, state):
     return float(properties.get(TANK_PRESSURE_KEY_BY_STATE[int(state) % 3], 0.0))
+
+
+def copv_delivered_pressure(properties, state):
+    """Ullage pressure a COPV delivers [psia], or None while isolated.  An ideal pressure
+    regulator holds the setpoint (regulated pressure feed, [SUTTON]); it cannot deliver more
+    than the bottle pressure.  A setpoint of 0 means unregulated (bottle pressure)."""
+    if int(state or 0) != 0:
+        return None
+    bottle_pressure = float(properties.get('bottle_pressure', 0.0))
+    setpoint = float(properties.get('ullage_pressure_setpoint', 0.0) or 0.0)
+    return min(setpoint, bottle_pressure) if setpoint > 0 else bottle_pressure
+
+
+def passes_pressurant(block):
+    """True if pressurant can pass through this block between a COPV and a tank ullage:
+    fittings and filters always, valves / couplings / flowmeters / orifices only when open."""
+    block_type = block.get('type')
+    state = normalized_state(block_type, block.get('state', 0)) if block_type in BLOCK_TYPES else 0
+    if block_type in ('tee', 'cross', 'elbow', 'filter'):
+        return True
+    return block_type in ('latch_valve', 'fluid_coupling', 'flowmeter', 'orifice') and state == 0
+
+
+def ullage_backfill(model):
+    """{tank identifier: (ullage pressure psia, COPV identifier)} for every tank whose top
+    inlet is connected to a backfilling COPV through lines and open passive components.
+    With several COPVs on one tank the highest delivered pressure wins."""
+    blocks = blocks_by_identifier(model)
+    copvs = [block for block in blocks.values() if block.get('type') == 'copv']
+    if not copvs:
+        return {}
+    connections = UnionFind()
+    for line in model.get('lines', []):
+        line_node = f"line:{line['identifier']}"
+        connections.find(line_node)
+        for end_name in ('start', 'end'):
+            attachment = line.get(end_name) or {}
+            if attachment.get('kind') == 'port' and attachment.get('block') in blocks:
+                connections.union(line_node, f"{attachment['block']}:{attachment['port']}")
+            elif attachment.get('kind') == 'line':
+                connections.union(line_node, f"line:{attachment.get('line')}")
+    for block in blocks.values():
+        if block.get('type') in BLOCK_TYPES and passes_pressurant(block):
+            port_nodes = [f"{block['identifier']}:{port}" for port in BLOCK_TYPES[block['type']]['ports']]
+            for port_node in port_nodes[1:]:
+                connections.union(port_nodes[0], port_node)
+    backfill = {}
+    for copv in copvs:
+        delivered = copv_delivered_pressure(copv.get('properties', {}), copv.get('state', 0))
+        if delivered is None:
+            continue
+        copv_root = connections.find(f"{copv['identifier']}:outlet")
+        for tank in blocks.values():
+            if tank.get('type') == 'tank' and connections.find(f"{tank['identifier']}:inlet") == copv_root:
+                if tank['identifier'] not in backfill or delivered > backfill[tank['identifier']][0]:
+                    backfill[tank['identifier']] = (delivered, copv['identifier'])
+    return backfill
 
 
 # =============================================================================
@@ -995,6 +1105,7 @@ class Network:
         self.density = DEFAULT_FLUID['density']
         self.viscosity = DEFAULT_FLUID['viscosity_millipascal_seconds'] * 1e-3
         self.settings = dict(DEFAULT_SETTINGS)
+        self.backfill = {}          # tank identifier -> (ullage pressure psia, COPV identifier)
 
     def node(self, key):
         return self.union_find.find(key)
@@ -1013,6 +1124,7 @@ def build_network(model):
     viscosity = float(fluid['viscosity_millipascal_seconds']) * 1e-3
     network = Network()
     network.density, network.viscosity, network.settings = density, viscosity, settings
+    network.backfill = ullage_backfill(model)
     blocks = blocks_by_identifier(model)
     lines = {line['identifier']: line for line in model.get('lines', [])}
     pending_elements = []   # (kind, first node, second node, owner, key, payload)
@@ -1122,7 +1234,10 @@ def build_network(model):
 
         if block_type == 'tank':
             reservoir_node = f"{identifier}:reservoir"
-            network.fixed_pressures[reservoir_node] = tank_pressure_psia(properties, state) * PASCALS_PER_PSI
+            # ullage pressure: the backfilling COPV's pressure if one is connected, else the tank state
+            tank_pressure = (network.backfill[identifier][0] if identifier in network.backfill
+                             else tank_pressure_psia(properties, state))
+            network.fixed_pressures[reservoir_node] = tank_pressure * PASCALS_PER_PSI
             outlet_diameter = tube_inner_diameter_inches(
                 properties.get('outlet_tubing_size', DEFAULT_TUBE)) * METERS_PER_INCH
             # bottom outlet: entrance loss leaving the tank, exit loss for back-flow   [CRANE]
@@ -1157,6 +1272,14 @@ def build_network(model):
                 add_orifice(inlet_node, outlet_node, 0.0, 1.0)
         elif block_type == 'transducer':
             pass  # dead-end pressure tap: reads the pressure of the node it is connected to
+        elif block_type in ('copv', 'fill_drain_valve'):
+            pass  # COPV: sets tank ullage pressure (see ullage_backfill); fill & drain valve: dead ends
+        elif block_type == 'fluid_coupling':
+            if state == 0:
+                add_orifice(inlet_node, outlet_node, float(properties.get('orifice_diameter', 0)),
+                            float(properties.get('discharge_coefficient', 0.6)))
+            else:
+                add_orifice(inlet_node, outlet_node, 0.0, 1.0)
         elif block_type == 'pump':
             # ON: flow = curve(pressure rise) at the set speed, so the outlet pressure is where the
             # pump curve meets the system.  OFF, or ON with no curves: stopped-pump orifice.
@@ -1521,7 +1644,7 @@ def solve_model(model, initial_guess=None):
         inlet_pressure = block_result['ports'].get('inlet', float('nan'))
         outlet_pressure = block_result['ports'].get('outlet', float('nan'))
         mass_flow = mass_flow_of(f"{identifier}#main")
-        if block_type in ('latch_valve', 'filter', 'flowmeter', 'orifice', 'elbow'):
+        if block_type in ('latch_valve', 'fluid_coupling', 'filter', 'flowmeter', 'orifice', 'elbow'):
             calculated['calculated_inlet_pressure'] = psia_from_pascals(inlet_pressure)
             calculated['calculated_outlet_pressure'] = psia_from_pascals(outlet_pressure)
             calculated['calculated_pressure_drop'] = psia_from_pascals(inlet_pressure - outlet_pressure)
@@ -1543,7 +1666,13 @@ def solve_model(model, initial_guess=None):
                     warnings.append(f"Pressure {format_number(psia_from_pascals(highest))} psia exceeds maximum "
                                     f"{format_number(float(maximum_pressure))} psia")
         elif block_type == 'tank':
-            tank_pressure = tank_pressure_psia(properties, state)
+            backfill_pressure, backfill_copv = network.backfill.get(identifier, (None, None))
+            tank_pressure = backfill_pressure if backfill_copv else tank_pressure_psia(properties, state)
+            if backfill_copv:
+                block_result['backfill_copv'] = backfill_copv
+                if tank_pressure > float(properties.get('maximum_pressure', 1e9)):
+                    warnings.append(f"COPV ullage pressure {format_number(tank_pressure)} psia exceeds the tank "
+                                    f"maximum {format_number(float(properties.get('maximum_pressure', 0)))} psia")
             inflow = mass_flow_of(f"{identifier}#inlet")
             net_outflow = mass_flow - inflow
             calculated['calculated_pressure'] = tank_pressure
@@ -1554,10 +1683,46 @@ def solve_model(model, initial_guess=None):
             calculated['calculated_time_to_empty'] = (propellant_mass / net_outflow if net_outflow > 1e-12
                                                       else float('nan'))
             block_result['mass_flow'] = mass_flow
-            block_result['label'] = (f"{format_number(tank_pressure, 4)} psia · out "
+            block_result['label'] = (f"{format_number(tank_pressure, 4)} psia{' (COPV)' if backfill_copv else ''} · out "
                                      f"{format_number(mass_flow / KILOGRAMS_PER_GRAM, 3)} g/s")
             if abs(inflow) > 1e-9:
                 block_result['label'] += f" · in {format_number(inflow / KILOGRAMS_PER_GRAM, 3)} g/s"
+        elif block_type == 'copv':
+            delivered = copv_delivered_pressure(properties, state)
+            served_tanks = [tank for tank, (_, source) in network.backfill.items() if source == identifier]
+            backfill_volume_flow = sum(mass_flow_of(f"{tank}#main") - mass_flow_of(f"{tank}#inlet")
+                                       for tank in served_tanks) / density
+            calculated['calculated_delivered_pressure'] = delivered if delivered is not None else float('nan')
+            calculated['calculated_tanks_backfilled'] = len(served_tanks)
+            # ullage gas must replace the propellant volume leaving the tank (incompressible liquid)
+            calculated['calculated_backfill_volume_flow'] = (backfill_volume_flow
+                                                             / CUBIC_METERS_PER_SECOND_PER_MILLILITER_PER_MINUTE)
+            if delivered is None:
+                block_result['label'] = 'isolated'
+            else:
+                block_result['label'] = (f"ullage {format_number(delivered, 4)} psia → "
+                                         f"{len(served_tanks)} tank{'s' if len(served_tanks) != 1 else ''}")
+            bottle_pressure = float(properties.get('bottle_pressure', 0.0))
+            setpoint = float(properties.get('ullage_pressure_setpoint', 0.0) or 0.0)
+            if bottle_pressure > float(properties.get('maximum_pressure', 1e9)):
+                warnings.append(f"Bottle pressure {format_number(bottle_pressure)} psia exceeds MEOP "
+                                f"{format_number(float(properties.get('maximum_pressure', 0)))} psia")
+            if delivered is not None and 0 < bottle_pressure < setpoint:
+                warnings.append(f"Bottle pressure {format_number(bottle_pressure)} psia is below the setpoint "
+                                f"{format_number(setpoint)} psia; delivering bottle pressure")
+            if delivered is not None and not served_tanks:
+                warnings.append("Not connected to a tank inlet (top port) through open lines and components")
+        elif block_type == 'fill_drain_valve':
+            calculated['calculated_inlet_pressure'] = psia_from_pascals(inlet_pressure)
+            calculated['calculated_outlet_pressure'] = psia_from_pascals(outlet_pressure)
+            block_result['label'] = ('dead end' if math.isnan(inlet_pressure)
+                                     else f"dead end · {format_number(psia_from_pascals(inlet_pressure), 4)} psia")
+            maximum_pressure = float(properties.get('maximum_pressure', 1e9))
+            for port_pressure in (inlet_pressure, outlet_pressure):
+                if not math.isnan(port_pressure) and port_pressure > maximum_pressure * PASCALS_PER_PSI:
+                    warnings.append(f"Pressure {format_number(psia_from_pascals(port_pressure))} psia exceeds "
+                                    f"maximum {format_number(maximum_pressure)} psia")
+                    break
         elif block_type == 'transducer':
             calculated['calculated_pressure'] = psia_from_pascals(inlet_pressure)
             block_result['reading'] = psia_from_pascals(inlet_pressure) if state == 0 else float('nan')
@@ -2619,6 +2784,61 @@ def run_self_test():
           + cross_calculated['calculated_lower_branch_flow'], cross_calculated['calculated_inlet_flow'], 1e-8)
     check('Cross branches symmetric (up = down)', cross_calculated['calculated_upper_branch_flow'],
           cross_calculated['calculated_lower_branch_flow'], 1e-6)
+    print("COPV, fluid coupling, fill & drain valve")
+
+    def small_model(block_list, connections):
+        built = {'fluid': dict(DEFAULT_FLUID), 'settings': {}, 'lines': [],
+                 'blocks': [{'identifier': name, 'type': block_type, 'state': state,
+                             'properties': dict(default_block_properties(block_type), **overrides)}
+                            for name, block_type, state, overrides in block_list]}
+        for index, (start, end) in enumerate(connections):
+            built['lines'].append({'identifier': f"line{index}", 'points': [[0, 0], [10, 0]],
+                                   'start': {'kind': 'port', 'block': start[0], 'port': start[1]},
+                                   'end': {'kind': 'port', 'block': end[0], 'port': end[1]},
+                                   'properties': dict(default_line_properties(), length=6.0)})
+        return built
+    feed = [(('tank', 'outlet'), ('engine', 'inlet'))]
+    pressurant_blocks = [('tank', 'tank', 0, {'nominal_pressure': 50.0}),
+                         ('engine', 'thruster', 0, {'inlet_tubing_size': DEFAULT_TUBE})]
+    backfilled = solve_model(small_model(
+        pressurant_blocks + [('bottle', 'copv', 0, {'ullage_pressure_setpoint': 300.0})],
+        feed + [(('bottle', 'outlet'), ('tank', 'inlet'))]))
+    check('COPV backfill sets tank ullage pressure [psia]',
+          backfilled['blocks']['tank']['calculated']['calculated_pressure'], 300.0, 1e-12)
+    isolated = solve_model(small_model(
+        pressurant_blocks + [('bottle', 'copv', 1, {'ullage_pressure_setpoint': 300.0})],
+        feed + [(('bottle', 'outlet'), ('tank', 'inlet'))]))
+    check('Isolated COPV leaves the tank at its own pressure [psia]',
+          isolated['blocks']['tank']['calculated']['calculated_pressure'], 50.0, 1e-12)
+    through_closed_coupling = solve_model(small_model(
+        pressurant_blocks + [('bottle', 'copv', 0, {'ullage_pressure_setpoint': 300.0}),
+                             ('coupling', 'fluid_coupling', 1, {})],
+        feed + [(('bottle', 'outlet'), ('coupling', 'inlet')), (('coupling', 'outlet'), ('tank', 'inlet'))]))
+    check('Closed coupling blocks COPV backfill [psia]',
+          through_closed_coupling['blocks']['tank']['calculated']['calculated_pressure'], 50.0, 1e-12)
+    # open coupling in the feed: flow follows the two equivalent orifices in series [SUTTON]
+    coupling_feed = small_model([('tank', 'tank', 0, {'nominal_pressure': 300.0}),
+                                 ('coupling', 'fluid_coupling', 0, {'orifice_diameter': 0.02}),
+                                 ('engine', 'thruster', 0, {'inlet_tubing_size': DEFAULT_TUBE})],
+                                [(('tank', 'outlet'), ('coupling', 'inlet')),
+                                 (('coupling', 'outlet'), ('engine', 'inlet'))])
+    for line in coupling_feed['lines']:
+        line['properties']['length'] = 0.001
+    coupling_results = solve_model(coupling_feed)
+    coupling_area = 0.6 * math.pi * (0.02 * METERS_PER_INCH) ** 2 / 4
+    thruster_area = 0.6 * math.pi * (0.0143 * METERS_PER_INCH) ** 2 / 4
+    series_area = 1 / math.sqrt(1 / coupling_area ** 2 + 1 / thruster_area ** 2)
+    check('Open coupling: series equivalent-orifice flow [kg/s]', coupling_results['blocks']['engine']['mass_flow'],
+          series_area * math.sqrt(2 * DEFAULT_FLUID['density'] * 300 * PASCALS_PER_PSI), 1e-3)
+    dead_end = solve_model(small_model([('tank', 'tank', 0, {'nominal_pressure': 300.0}),
+                                        ('service', 'fill_drain_valve', 0, {}),
+                                        ('engine', 'thruster', 0, {'inlet_tubing_size': DEFAULT_TUBE})],
+                                       [(('tank', 'outlet'), ('service', 'inlet')),
+                                        (('service', 'outlet'), ('engine', 'inlet'))]))
+    check('Fill & drain valve passes no flow [kg/s]', dead_end['blocks']['engine']['mass_flow'] + 1.0, 1.0, 1e-12)
+    check('Fill & drain valve reads the connected pressure [psia]',
+          dead_end['blocks']['service']['calculated']['calculated_inlet_pressure'], 300.0, 1e-9)
+
     print("Copy names")
     taken = {'LV-1', 'LV-2', 'Main valve', 'TK-09'}
     naming_cases = [('LV-1', 'LV-3'), ('LV-2', 'LV-3'), ('Main valve', 'Main valve 1'), ('TK-09', 'TK-10'),
@@ -2986,7 +3206,7 @@ def draw_symbol(painter, block_type, state, color):
     base_width, base_height = BLOCK_TYPES[block_type]['size']
     half_width = base_width / 2.0
     dimmed = state != 0 and block_type in ('flowmeter', 'transducer', 'pump', 'thruster',
-                                           'orifice', 'tee', 'elbow')
+                                           'orifice', 'tee', 'elbow', 'copv', 'fluid_coupling')
     stroke_color = QColor(THEME['off']) if dimmed else QColor(color)
     pen = QPen(stroke_color, 2.0)
     pen.setCapStyle(Qt.PenCapStyle.RoundCap)
@@ -3026,6 +3246,76 @@ def draw_symbol(painter, block_type, state, color):
         painter.drawPath(capsule_path)
         painter.drawLine(QPointF(-14, capsule.bottom()), QPointF(14, capsule.bottom()))   # outlet boss
         painter.setPen(pen)
+    elif block_type == 'copv':
+        # composite overwrapped pressure vessel: capsule with cross-hatched overwrap, outlet tube below
+        bottle = QRectF(-30, -55, 60, 110)
+        bottle_path = QPainterPath()
+        bottle_path.addRoundedRect(bottle, 28, 28)
+        painter.save()
+        painter.setClipPath(bottle_path)
+        painter.fillRect(bottle, translucent_fill if state == 0 else interior_fill)
+        painter.restore()
+        hatch_color = QColor(stroke_color)
+        hatch_color.setAlpha(110)
+        painter.setPen(QPen(hatch_color, 1.0))
+        corner_radius, half_width_inner, half_height_inner = 28.0, 30.0 - 28.0, 55.0 - 28.0
+
+        def inside_bottle(x, y):
+            dx, dy = max(abs(x) - half_width_inner, 0.0), max(abs(y) - half_height_inner, 0.0)
+            return dx * dx + dy * dy <= (corner_radius - 1.5) ** 2
+
+        for offset in range(-84, 85, 12):                        # +/-45 degree composite wrap
+            for slope in (1, -1):
+                segment_start = None
+                for step in range(0, 121):                       # walk the line, keep the part inside
+                    y = -60.0 + step
+                    x = offset + slope * y
+                    if inside_bottle(x, y):
+                        if segment_start is None:
+                            segment_start = (x, y)
+                        segment_end = (x, y)
+                    elif segment_start is not None:
+                        painter.drawLine(QPointF(*segment_start), QPointF(*segment_end))
+                        segment_start = None
+                if segment_start is not None:
+                    painter.drawLine(QPointF(*segment_start), QPointF(*segment_end))
+        draw_pipe(painter, QPointF(0, bottle.bottom() - 2), QPointF(0, base_height / 2))
+        painter.setPen(QPen(stroke_color, 2.5))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawPath(bottle_path)
+        painter.setPen(pen)
+    elif block_type == 'fluid_coupling':
+        # coupling halves meeting in the middle (open) or parted with sealed faces (closed)
+        if state == 0:
+            flow_line(-half_width, -20)
+            flow_line(20, half_width)
+            painter.setBrush(interior_fill)
+            painter.drawRect(QRectF(-20, -9, 18, 18))
+            painter.drawRect(QRectF(2, -9, 18, 18))
+            painter.drawLine(QPointF(-2, 0), QPointF(2, 0))
+            painter.setBrush(translucent_fill)
+            painter.drawPolygon(QPolygonF([QPointF(-8, -5), QPointF(-2, 0), QPointF(-8, 5)]))
+            painter.drawPolygon(QPolygonF([QPointF(8, -5), QPointF(2, 0), QPointF(8, 5)]))
+        else:
+            flow_line(-half_width, -24)
+            flow_line(24, half_width)
+            painter.setBrush(interior_fill)
+            painter.drawRect(QRectF(-24, -9, 16, 18))
+            painter.drawRect(QRectF(8, -9, 16, 18))
+            sealed_pen = QPen(stroke_color, 3.5)
+            painter.setPen(sealed_pen)
+            painter.drawLine(QPointF(-8, -9), QPointF(-8, 9))
+            painter.drawLine(QPointF(8, -9), QPointF(8, 9))
+            painter.setPen(pen)
+    elif block_type == 'fill_drain_valve':
+        # normally closed hand valve (filled bow-tie) with a T handle: symbolic dead end
+        flow_line(-half_width, -22)
+        flow_line(22, half_width)
+        painter.setBrush(stroke_color)
+        painter.drawPolygon(QPolygonF([QPointF(-22, -13), QPointF(-22, 13), QPointF(0, 0)]))
+        painter.drawPolygon(QPolygonF([QPointF(22, -13), QPointF(22, 13), QPointF(0, 0)]))
+        painter.drawLine(QPointF(0, 0), QPointF(0, -17))
+        painter.drawLine(QPointF(-9, -17), QPointF(9, -17))
     elif block_type == 'latch_valve':
         flow_line(-half_width, -22)
         flow_line(22, half_width)
@@ -3122,6 +3412,29 @@ def symbol_pixmap(block_type, state=0, width=76, height=50):
     painter.translate(width / 2, height / 2)
     painter.scale(scale, scale)
     draw_symbol(painter, block_type, state, COLOR_SYMBOL)
+    painter.end()
+    return pixmap
+
+
+def assembly_pixmap(template, width=76, height=50):
+    """Palette icon for a saved assembly: up to three of its parts side by side."""
+    pixmap = QPixmap(width, height)
+    pixmap.fill(QColor(0, 0, 0, 0))
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    part_types = [block.get('type') for block in template.get('blocks', []) if block.get('type') in BLOCK_TYPES][:3]
+    slot_width = width / max(len(part_types), 1)
+    for slot_index, block_type in enumerate(part_types):
+        base_width, base_height = BLOCK_TYPES[block_type]['size']
+        scale = min(slot_width / base_width, height / base_height) * 0.9
+        painter.save()
+        painter.translate(slot_width * (slot_index + 0.5), height / 2)
+        painter.scale(scale, scale)
+        draw_symbol(painter, block_type, 0, COLOR_SYMBOL)
+        painter.restore()
+    painter.setPen(QPen(QColor(THEME['gold_middle']), 1.0, Qt.PenStyle.DashLine))
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.drawRoundedRect(QRectF(1, 1, width - 2, height - 2), 6, 6)
     painter.end()
     return pixmap
 
@@ -3277,6 +3590,51 @@ class SpeedEditorItem(QGraphicsTextItem):
         super().paint(painter, option, widget)
 
 
+class AssemblyOutlineItem(QGraphicsItem):
+    """Faint dashed outline and name tag around the parts of one assembly; a padlock shows
+    whether the assembly is locked (moves and edits as one block) or unlocked."""
+
+    def __init__(self, assembly_identifier):
+        super().__init__()
+        self.assembly_identifier = assembly_identifier
+        self.rectangle = QRectF()
+        self.name = ''
+        self.locked = True
+        self.setZValue(-3)
+        self.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+
+    def set_geometry(self, rectangle, name, locked):
+        self.prepareGeometryChange()
+        self.rectangle, self.name, self.locked = rectangle, name, locked
+        self.update()
+
+    def boundingRect(self):
+        return self.rectangle.adjusted(-4, -24, 4, 4)
+
+    def paint(self, painter, option, widget=None):
+        if self.rectangle.width() <= 0 or self.rectangle.height() <= 0:
+            return
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        color = QColor(THEME['gold_middle'] if self.locked else THEME['cyan_dim'])
+        painter.setPen(QPen(color, 1.4, Qt.PenStyle.DashLine))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawRoundedRect(self.rectangle, 12, 12)
+        # padlock: body plus shackle (shackle lifted when unlocked)
+        tag_x, tag_y = self.rectangle.left() + 6, self.rectangle.top() - 18
+        painter.setPen(QPen(color, 1.4))
+        painter.setBrush(color)
+        painter.drawRect(QRectF(tag_x, tag_y + 6, 9, 7))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        lift = 0 if self.locked else 3
+        painter.drawPolyline(QPolygonF([QPointF(tag_x + 2, tag_y + 6), QPointF(tag_x + 2, tag_y + 2 - lift),
+                                        QPointF(tag_x + 7, tag_y + 2 - lift),
+                                        QPointF(tag_x + 7, tag_y + 6 - lift)]))
+        painter.setFont(make_font(8.0, True))
+        painter.setPen(color)
+        painter.drawText(QRectF(tag_x + 14, tag_y, 400, 16), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                         f"{self.name} · {'locked' if self.locked else 'unlocked'}")
+
+
 # -----------------------------------------------------------------------------
 # Flow / pressure data label visibility (shared by blocks and lines)
 # -----------------------------------------------------------------------------
@@ -3329,6 +3687,8 @@ class BlockItem(DataLabelVisibility, QGraphicsItem):
         self.orientation = int(data.get('orientation', 0)) % 360
         self.data_label_override = data.get('data_label_visibility')
         self._hover_reveal = False
+        self.assembly_identifier = data.get('assembly')
+        self._last_position = None
         self.result = None
         self.warnings = []
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable)
@@ -3506,8 +3866,12 @@ class BlockItem(DataLabelVisibility, QGraphicsItem):
     def state_label(self):
         label = self.type_information['states'][self.state]
         if self.block_type == 'tank':
-            label = (f"{label.split()[0]} · "
-                     f"{format_number(tank_pressure_psia(self.properties, self.state), 4)} psia")
+            backfill_copv = (self.result or {}).get('backfill_copv')
+            if backfill_copv:
+                label = f"COPV backfill · {format_number((self.result or {}).get('calculated', {}).get('calculated_pressure', float('nan')), 4)} psia"
+            else:
+                label = (f"{label.split()[0]} · "
+                         f"{format_number(tank_pressure_psia(self.properties, self.state), 4)} psia")
         if self.block_type == 'pump' and self.state == 0:
             label = f"ON · {format_number(float(self.properties.get('revolutions_per_minute', 0)), 5)} rpm"
         return label
@@ -3562,6 +3926,8 @@ class BlockItem(DataLabelVisibility, QGraphicsItem):
                 'pump_curves': copy.deepcopy(self.pump_curves)}
         if self.data_label_override is not None:
             data['data_label_visibility'] = self.data_label_override
+        if self.assembly_identifier:
+            data['assembly'] = self.assembly_identifier
         return data
 
     def apply_data_label_visibility(self):
@@ -3663,9 +4029,16 @@ class BlockItem(DataLabelVisibility, QGraphicsItem):
         if change == QGraphicsItem.GraphicsItemChange.ItemPositionChange:
             return QPointF(snap_to_grid(value.x()), snap_to_grid(value.y()))
         if change == QGraphicsItem.GraphicsItemChange.ItemPositionHasChanged:
+            position = to_tuple(self.pos())
+            previous = self._last_position or position
+            self._last_position = position
             scene = self.scene()
             if isinstance(scene, SchematicScene):
-                scene.on_block_moving(self)
+                scene.on_block_moving(self, (position[0] - previous[0], position[1] - previous[1]))
+        if change == QGraphicsItem.GraphicsItemChange.ItemSelectedHasChanged:
+            scene = self.scene()
+            if isinstance(scene, SchematicScene):
+                scene.on_item_selection_changed(self)
         return super().itemChange(change, value)
 
 
@@ -3683,6 +4056,7 @@ class LineItem(DataLabelVisibility, QGraphicsPathItem):
         self.properties = default_line_properties()
         self.properties.update(copy.deepcopy(data.get('properties') or {}))
         self.auto_routed = bool(data.get('auto_routed', True))
+        self.assembly_identifier = data.get('assembly')
         self.data_label_override = data.get('data_label_visibility')
         self._hover_reveal = False
         self.result = None
@@ -3701,7 +4075,16 @@ class LineItem(DataLabelVisibility, QGraphicsPathItem):
                 'properties': copy.deepcopy(self.properties), 'auto_routed': self.auto_routed}
         if self.data_label_override is not None:
             data['data_label_visibility'] = self.data_label_override
+        if self.assembly_identifier:
+            data['assembly'] = self.assembly_identifier
         return data
+
+    def itemChange(self, change, value):
+        if change == QGraphicsItem.GraphicsItemChange.ItemSelectedHasChanged:
+            scene = self.scene()
+            if isinstance(scene, SchematicScene):
+                scene.on_item_selection_changed(self)
+        return super().itemChange(change, value)
 
     def apply_data_label_visibility(self):
         visible = self.data_labels_visible_now()
@@ -3867,7 +4250,7 @@ class LineItem(DataLabelVisibility, QGraphicsPathItem):
         scene = self.scene()
         self._drag = None
         if (event.button() == Qt.MouseButton.LeftButton and isinstance(scene, SchematicScene)
-                and scene.mode == 'select' and len(self.points) >= 2):
+                and scene.mode == 'select' and len(self.points) >= 2 and not scene.is_locked_item(self)):
             position = to_tuple(event.pos())
             original_points = list(self.points)
             if distance_between(position, self.points[0]) < 7:
@@ -3955,6 +4338,9 @@ class SchematicScene(QGraphicsScene):
         self.loading = False
         self.results = None
         self._moved_block_identifiers = set()
+        self.assemblies = {}            # identifier -> {'name': str, 'locked': bool}
+        self.assembly_outlines = {}     # identifier -> AssemblyOutlineItem
+        self._expanding_selection = False
         self.preview = QGraphicsPathItem()
         self.preview.setZValue(50)
         self.addItem(self.preview)
@@ -3963,7 +4349,107 @@ class SchematicScene(QGraphicsScene):
     # ---- infrastructure ----------------------------------------------------
     def notify(self, physics_changed=True):
         if not self.loading:
+            self.update_assembly_outlines()
             self.model_changed.emit(physics_changed)
+
+    # ---- assemblies: saved groups of connected parts, locked or unlocked -------------
+    def assembly_record(self, item):
+        return self.assemblies.get(getattr(item, 'assembly_identifier', None))
+
+    def is_locked_item(self, item):
+        record = self.assembly_record(item)
+        return bool(record and record.get('locked'))
+
+    def assembly_members(self, assembly_identifier):
+        return ([block for block in self.blocks.values() if block.assembly_identifier == assembly_identifier],
+                [line for line in self.lines.values() if line.assembly_identifier == assembly_identifier])
+
+    def on_item_selection_changed(self, item):
+        """Selecting any part of a locked assembly selects the whole assembly."""
+        if self._expanding_selection or self.loading or not item.isSelected() or not self.is_locked_item(item):
+            return
+        self._expanding_selection = True
+        try:
+            member_blocks, member_lines = self.assembly_members(item.assembly_identifier)
+            for member in member_blocks + member_lines:
+                if not member.isSelected():
+                    member.setSelected(True)
+        finally:
+            self._expanding_selection = False
+
+    def create_assembly(self, items, name, locked=True):
+        items = [item for item in items if isinstance(item, (BlockItem, LineItem))]
+        if not items:
+            return None
+        assembly_identifier = new_identifier()
+        self.assemblies[assembly_identifier] = {'name': name, 'locked': bool(locked)}
+        for item in items:
+            item.assembly_identifier = assembly_identifier
+        self._prune_assemblies()
+        self.notify(physics_changed=False)
+        return assembly_identifier
+
+    def set_assembly_locked(self, assembly_identifier, locked):
+        if assembly_identifier in self.assemblies:
+            self.assemblies[assembly_identifier]['locked'] = bool(locked)
+            self.notify(physics_changed=False)
+
+    def rename_assembly(self, assembly_identifier, name):
+        if assembly_identifier in self.assemblies and name:
+            self.assemblies[assembly_identifier]['name'] = name
+            self.notify(physics_changed=False)
+
+    def add_items_to_assembly(self, assembly_identifier, items):
+        for item in items:
+            if isinstance(item, (BlockItem, LineItem)):
+                item.assembly_identifier = assembly_identifier
+        self._prune_assemblies()
+        self.notify(physics_changed=False)
+
+    def remove_items_from_assembly(self, items):
+        for item in items:
+            if isinstance(item, (BlockItem, LineItem)):
+                item.assembly_identifier = None
+        self._prune_assemblies()
+        self.notify(physics_changed=False)
+
+    def dissolve_assembly(self, assembly_identifier):
+        member_blocks, member_lines = self.assembly_members(assembly_identifier)
+        self.remove_items_from_assembly(member_blocks + member_lines)
+
+    def _prune_assemblies(self):
+        """Forget assemblies that no longer have any parts."""
+        used = {item.assembly_identifier for item in list(self.blocks.values()) + list(self.lines.values())}
+        for assembly_identifier in list(self.assemblies):
+            if assembly_identifier not in used:
+                del self.assemblies[assembly_identifier]
+
+    def update_assembly_outlines(self):
+        for assembly_identifier in list(self.assembly_outlines):
+            if assembly_identifier not in self.assemblies:
+                self.removeItem(self.assembly_outlines.pop(assembly_identifier))
+        for assembly_identifier, record in self.assemblies.items():
+            member_blocks, member_lines = self.assembly_members(assembly_identifier)
+            rectangles = [rectangle for block in member_blocks for rectangle in block.label_rectangles()]
+            for line in member_lines:
+                if line.points:
+                    xs = [point[0] for point in line.points]
+                    ys = [point[1] for point in line.points]
+                    rectangles.append((min(xs), min(ys), max(xs), max(ys)))
+            if not rectangles:
+                continue
+            padding = 12.0
+            left = min(rectangle[0] for rectangle in rectangles) - padding
+            top = min(rectangle[1] for rectangle in rectangles) - padding
+            right = max(rectangle[2] for rectangle in rectangles) + padding
+            bottom = max(rectangle[3] for rectangle in rectangles) + padding
+            outline_rectangle = QRectF(left, top, right - left, bottom - top)
+            outline = self.assembly_outlines.get(assembly_identifier)
+            if outline is None:
+                outline = AssemblyOutlineItem(assembly_identifier)
+                self.addItem(outline)
+                self.assembly_outlines[assembly_identifier] = outline
+            outline.set_geometry(outline_rectangle, record['name'], record['locked'])
 
     def drawBackground(self, painter, rectangle):
         background = QLinearGradient(QPointF(0, rectangle.top()), QPointF(0, rectangle.bottom()))
@@ -4138,11 +4624,23 @@ class SchematicScene(QGraphicsScene):
                 port.set_connected((block.identifier, port_name) in connected_ports)
 
     # ---- block movement -----------------------------------------------------
-    def on_block_moving(self, block):
+    def on_block_moving(self, block, delta=(0.0, 0.0)):
         if self.loading:
             return
         self._moved_block_identifiers.add(block.identifier)
+        locked_assembly = block.assembly_identifier if self.is_locked_item(block) else None
+        if locked_assembly and (delta[0] or delta[1]):
+            member_blocks, member_lines = self.assembly_members(locked_assembly)
+            # a locked assembly moves rigidly: its own tubes are carried along unchanged
+            # (done once per step, driven by the member with the lowest identifier)
+            if block.identifier == min(member.identifier for member in member_blocks):
+                for line in member_lines:
+                    line.points = [(point[0] + delta[0], point[1] + delta[1]) for point in line.points]
+                    line.update_path()
+                    self.update_dependents(line)
         for line in self.lines.values():
+            if locked_assembly and line.assembly_identifier == locked_assembly:
+                continue
             changed = False
             for which_end in ('start', 'end'):
                 attachment = getattr(line, which_end)
@@ -4164,9 +4662,10 @@ class SchematicScene(QGraphicsScene):
                 continue
             attached = any(attachment and attachment.get('kind') == 'port' and attachment.get('block') in moved
                            for attachment in (line.start, line.end))
-            if (attached and line.auto_routed) or self.collides(line.points):
+            carried = self.is_locked_item(line)       # moved rigidly with its locked assembly
+            if self.collides(line.points) or (attached and line.auto_routed and not carried):
                 self.reroute_line(line)
-            elif attached:
+            elif attached and not carried:
                 line.set_points(simplify(line.points))
         self.notify(physics_changed=False)
 
@@ -4245,6 +4744,7 @@ class SchematicScene(QGraphicsScene):
                 self.remove_block(item)
             elif isinstance(item, LineItem) and item.identifier in self.lines:
                 self.remove_line(item)
+        self._prune_assemblies()
         self.refresh_port_markers()
         self.notify()
 
@@ -4293,8 +4793,12 @@ class SchematicScene(QGraphicsScene):
             line_dictionaries.append(line_dictionary)
         if not blocks and not line_dictionaries:
             return None
+        block_dictionaries = [block.to_dictionary() for block in blocks]
+        referenced = {item.get('assembly') for item in block_dictionaries + line_dictionaries} - {None}
         return {'format': 'pylon_clipboard', 'version': FILE_FORMAT_VERSION,
-                'blocks': [block.to_dictionary() for block in blocks], 'lines': line_dictionaries}
+                'blocks': block_dictionaries, 'lines': line_dictionaries,
+                'assemblies': {identifier: dict(self.assemblies[identifier])
+                               for identifier in referenced if identifier in self.assemblies}}
 
     @staticmethod
     def _payload_bounds(payload):
@@ -4339,6 +4843,7 @@ class SchematicScene(QGraphicsScene):
         right/down until it sits clear of existing blocks and lines."""
         if not payload or not (payload.get('blocks') or payload.get('lines')):
             return []
+        source_assemblies = dict(payload.get('assemblies') or {})
         payload = {'blocks': [upgrade_block_template(block) for block in payload.get('blocks', [])
                               if block.get('type') in BLOCK_TYPES],
                    'lines': copy.deepcopy(payload.get('lines', []))}
@@ -4380,6 +4885,17 @@ class SchematicScene(QGraphicsScene):
                 attachment['line'] = line_identifier_map[attachment['line']]
             return attachment
 
+        # pasted assembly parts form new assemblies (names incremented like block names)
+        taken_assembly_names = {record['name'] for record in self.assemblies.values()}
+        assembly_identifier_map = {}
+        for old_identifier, record in source_assemblies.items():
+            assembly_name = record.get('name') or 'Assembly'
+            if assembly_name in taken_assembly_names:
+                assembly_name = incremented_name(assembly_name, taken_assembly_names)
+            taken_assembly_names.add(assembly_name)
+            assembly_identifier_map[old_identifier] = new_identifier()
+            self.assemblies[assembly_identifier_map[old_identifier]] = {'name': assembly_name,
+                                                                        'locked': bool(record.get('locked', True))}
         new_items = []
         taken_names = {existing.name for existing in self.blocks.values()}
         self.loading = True                       # defer re-routing until everything exists
@@ -4392,12 +4908,14 @@ class SchematicScene(QGraphicsScene):
                                       else None)
                 if block_data['name']:
                     taken_names.add(block_data['name'])
+                block_data['assembly'] = assembly_identifier_map.get(block.get('assembly'))
                 block_data['x'] = block['x'] + offset_x
                 block_data['y'] = block['y'] + offset_y
                 new_items.append(self.add_block(block_data))
             for line in payload['lines']:
                 line_data = copy.deepcopy(line)
                 line_data['identifier'] = line_identifier_map[line['identifier']]
+                line_data['assembly'] = assembly_identifier_map.get(line.get('assembly'))
                 line_data['name'] = None
                 line_data['points'] = [(point[0] + offset_x, point[1] + offset_y) for point in line['points']]
                 line_data['start'] = remap(line['start'])
@@ -4426,6 +4944,10 @@ class SchematicScene(QGraphicsScene):
 
     def rotate_block(self, block, clockwise=True):
         """Rotate 90° to the right (clockwise on screen) or to the left."""
+        if self.is_locked_item(block):
+            self.message.emit(f"'{self.assembly_record(block)['name']}' is locked — unlock the assembly to "
+                              "rotate its parts.")
+            return
         block.orientation = (block.orientation + (90 if clockwise else 270)) % 360
         block.layout_ports()
         block.update()
@@ -4688,6 +5210,36 @@ class SchematicScene(QGraphicsScene):
             self.notify(physics_changed=False)
         action.triggered.connect(apply)
 
+    def _add_assembly_actions(self, menu, clicked_item):
+        """Assembly submenu for a part of an assembly, or 'Save selection as assembly…'."""
+        selected = [item for item in self.selectedItems() if isinstance(item, (BlockItem, LineItem))] or [clicked_item]
+        assembly_identifier = clicked_item.assembly_identifier
+        record = self.assemblies.get(assembly_identifier)
+        menu.addSeparator()
+        if record is None:
+            outside = [item for item in selected if not self.assembly_record(item)]
+            menu.addAction(f"Save selection as assembly… ({len(outside)} item{'s' if len(outside) != 1 else ''})",
+                           lambda: self.main_window.save_selection_as_assembly(outside))
+            return
+        assembly_menu = menu.addMenu(f"Assembly “{record['name']}” ({'locked' if record['locked'] else 'unlocked'})")
+        if record['locked']:
+            assembly_menu.addAction("Unlock (edit, move or rotate parts)",
+                                    lambda: self.set_assembly_locked(assembly_identifier, False))
+        else:
+            assembly_menu.addAction("Lock (move and edit as one block)",
+                                    lambda: self.set_assembly_locked(assembly_identifier, True))
+            outsiders = [item for item in selected if item.assembly_identifier != assembly_identifier]
+            if outsiders:
+                assembly_menu.addAction(f"Add {len(outsiders)} selected item{'s' if len(outsiders) != 1 else ''} "
+                                        "to this assembly",
+                                        lambda: self.add_items_to_assembly(assembly_identifier, outsiders))
+            assembly_menu.addAction("Remove this item from the assembly",
+                                    lambda: self.remove_items_from_assembly([clicked_item]))
+        assembly_menu.addAction("Rename…", lambda: self.main_window.rename_assembly(assembly_identifier))
+        assembly_menu.addAction("Save to library…", lambda: self.main_window.save_assembly(assembly_identifier))
+        assembly_menu.addSeparator()
+        assembly_menu.addAction("Dissolve (keep the parts)", lambda: self.dissolve_assembly(assembly_identifier))
+
     def block_menu(self, block, event):
         if not block.isSelected():
             self.clearSelection()
@@ -4717,8 +5269,12 @@ class SchematicScene(QGraphicsScene):
         menu.addAction("Copy\tCtrl+C", lambda: self.main_window.copy_items(selected_items))
         menu.addAction("Duplicate Block", lambda: self.duplicate_items(selected_items))
         menu.addAction("Save Block…", lambda: self.main_window.save_block(block))
+        self._add_assembly_actions(menu, block)
         menu.addSeparator()
-        menu.addAction("Delete Block", lambda: self.delete_items(selected_blocks or [block]))
+        if self.is_locked_item(block):
+            menu.addAction("Delete assembly", lambda: self.delete_items(self.selectedItems()))
+        else:
+            menu.addAction("Delete Block", lambda: self.delete_items(selected_blocks or [block]))
         menu.exec(event.screenPos())
 
     def line_menu(self, line, event):
@@ -4729,6 +5285,16 @@ class SchematicScene(QGraphicsScene):
             line.setSelected(True)
         selected_lines = [item for item in self.selectedItems() if isinstance(item, LineItem)]
         menu = QMenu()
+        if self.is_locked_item(line):
+            # tubes inside a locked assembly can't be reshaped or removed on their own
+            menu.addAction("Copy\tCtrl+C", lambda: self.main_window.copy_items(self.selectedItems() or [line]))
+            menu.addAction("Properties…", lambda: self.main_window.edit_line(line))
+            self._add_data_label_action(menu, line)
+            self._add_assembly_actions(menu, line)
+            menu.addSeparator()
+            menu.addAction("Delete assembly", lambda: self.delete_items(self.selectedItems()))
+            menu.exec(event.screenPos())
+            return
         if len(selected_lines) >= 2:
             menu.addAction(f"Combine {len(selected_lines)} lines into one…",
                            lambda: self.combine_lines(selected_lines))
@@ -4743,6 +5309,7 @@ class SchematicScene(QGraphicsScene):
         menu.addAction("Delete segment", lambda: self.delete_line_segment(line, segment_index))
         menu.addAction("Auto-route", lambda: self.auto_route([line]))
         menu.addAction("Reverse direction", lambda: self.reverse_line(line))
+        self._add_assembly_actions(menu, line)
         menu.addSeparator()
         menu.addAction("Delete line", lambda: self.delete_items([line]))
         menu.exec(event.screenPos())
@@ -4807,10 +5374,17 @@ class SchematicScene(QGraphicsScene):
         else:
             super().dragMoveEvent(event)
 
+    def place_assembly(self, template, position):
+        """Add a saved assembly from the library, centred at `position`, as a new locked assembly."""
+        return self.paste_payload(template, position)
+
     def dropEvent(self, event):
         if event.mimeData().hasFormat(BLOCK_MIME_TYPE):
             template = json.loads(bytes(event.mimeData().data(BLOCK_MIME_TYPE).data()).decode('utf-8'))
-            self.add_block(template_to_block_data(template), to_tuple(event.scenePos()))
+            if template.get('format') == 'pylon_assembly':
+                self.place_assembly(template, to_tuple(event.scenePos()))
+            else:
+                self.add_block(template_to_block_data(template), to_tuple(event.scenePos()))
             event.acceptProposedAction()
         else:
             super().dropEvent(event)
@@ -4824,6 +5398,7 @@ class SchematicScene(QGraphicsScene):
                 'lines': [line.to_dictionary() for line in self.lines.values()],
                 'scenarios': copy.deepcopy(self.scenarios),
                 'active_scenario': self.active_scenario,
+                'assemblies': [dict(record, identifier=identifier) for identifier, record in self.assemblies.items()],
                 'view': {'show_data_labels': self.show_labels}}
 
     def clear_all(self):
@@ -4832,7 +5407,10 @@ class SchematicScene(QGraphicsScene):
             self.removeItem(line)
         for block in list(self.blocks.values()):
             self.removeItem(block)
+        for outline in self.assembly_outlines.values():
+            self.removeItem(outline)
         self.blocks, self.lines = {}, {}
+        self.assemblies, self.assembly_outlines = {}, {}
         self.results = None
 
     def load_model(self, model):
@@ -4851,6 +5429,9 @@ class SchematicScene(QGraphicsScene):
             self.scenarios = copy.deepcopy(model.get('scenarios') or [])
             self.active_scenario = model.get('active_scenario')
             self.show_labels = bool((model.get('view') or {}).get('show_data_labels', True))
+            self.assemblies = {record['identifier']: {'name': record.get('name') or 'Assembly',
+                                                      'locked': bool(record.get('locked', True))}
+                               for record in (model.get('assemblies') or []) if record.get('identifier')}
             for block_data in model.get('blocks', []):
                 if block_data.get('type') in BLOCK_TYPES:
                     self.add_block(block_data, select=False)
@@ -5016,11 +5597,14 @@ class PaletteEntry(QFrame):
                            "#entry:hover { border: 2px solid %(cyan)s; background: #10304c; }" % THEME)
         entry_layout = QHBoxLayout(self)
         entry_layout.setContentsMargins(4, 3, 6, 3)
+        is_assembly = template.get('format') == 'pylon_assembly'
         icon = QLabel()
-        icon.setPixmap(symbol_pixmap(template['type'], int(template.get('state', 0))))
+        icon.setPixmap(assembly_pixmap(template) if is_assembly
+                       else symbol_pixmap(template['type'], int(template.get('state', 0))))
         icon.setFixedSize(78, 52)
         entry_layout.addWidget(icon)
-        type_label = BLOCK_TYPES[template['type']]['label']
+        type_label = (f"Assembly · {len(template.get('blocks', []))} parts" if is_assembly
+                      else BLOCK_TYPES[template['type']]['label'])
         text = QLabel(f"<b style='color:{THEME['heading']}'>{template.get('name') or type_label}</b>"
                       + (f"<br>{muted_html(type_label)}" if saved_path else ''))
         text.setWordWrap(True)
@@ -5043,7 +5627,8 @@ class PaletteEntry(QFrame):
         mime_data = QMimeData()
         mime_data.setData(BLOCK_MIME_TYPE, json.dumps(self.template).encode('utf-8'))
         drag.setMimeData(mime_data)
-        drag.setPixmap(symbol_pixmap(self.template['type']))
+        drag.setPixmap(assembly_pixmap(self.template) if self.template.get('format') == 'pylon_assembly'
+                       else symbol_pixmap(self.template['type']))
         drag.exec(Qt.DropAction.CopyAction)
 
     def mouseReleaseEvent(self, event):
@@ -5055,7 +5640,8 @@ class PaletteEntry(QFrame):
         if not self.saved_path:
             return
         menu = QMenu(self)
-        menu.addAction("Delete saved block", lambda: self.delete_requested.emit(self.saved_path))
+        menu.addAction("Delete saved assembly" if self.template.get('format') == 'pylon_assembly'
+                       else "Delete saved block", lambda: self.delete_requested.emit(self.saved_path))
         menu.exec(event.globalPos())
 
 
@@ -5100,10 +5686,11 @@ class PaletteWidget(QWidget):
                                   'state': 0, 'name': BLOCK_TYPES[block_type]['label']})
             entry.clicked.connect(self.add_requested.emit)
             self.entries_layout.addWidget(entry)
-        self.entries_layout.addWidget(self._header("Saved blocks"))
+        self.entries_layout.addWidget(self._header("Saved blocks & assemblies"))
         saved_blocks = list_saved_blocks()
         if not saved_blocks:
-            placeholder = QLabel("<i>None yet — right-click a block → Save Block</i>")
+            placeholder = QLabel("<i>None yet — right-click a block → Save Block, or select connected "
+                                 "parts → right-click → Save selection as assembly</i>")
             placeholder.setWordWrap(True)
             placeholder.setStyleSheet(f"color:{THEME['muted']};")
             self.entries_layout.addWidget(placeholder)
@@ -5144,7 +5731,9 @@ def list_saved_blocks():
         try:
             with open(path, encoding='utf-8') as file_handle:
                 template = json.load(file_handle)
-            if template.get('type') in BLOCK_TYPES:
+            if template.get('format') == 'pylon_assembly' and isinstance(template.get('blocks'), list):
+                saved_blocks.append((path, template))
+            elif template.get('type') in BLOCK_TYPES:
                 saved_blocks.append((path, upgrade_block_template(template)))
         except (OSError, ValueError):
             continue
@@ -6184,6 +6773,10 @@ its outlet on the bottom.</p>
 Click the <b>centre</b> of a block to toggle its state (tees, crosses and 90° fittings have no toggle).
 Right-click for Properties, State, Rotate, Copy, Duplicate Block, Save Block and Delete Block.
 Double-click the body for properties.
+<b>Assemblies</b> — select connected parts and tubes, right-click → <i>Save selection as assembly…</i>
+to save them to the Component Blocks library as one block. A <b>locked</b> assembly (padlock closed)
+selects, moves, copies and deletes as one unit and protects its parts; right-click → Assembly →
+<i>Unlock</i> to move, rotate or edit parts, add or remove parts, then <i>Lock</i> and <i>Save to library</i>.
 <b>Ctrl+Z</b> undoes and <b>Ctrl+Y</b> redoes. <b>R</b> / <b>Shift+R</b> (or the toolbar's Rotate
 right / Rotate left) turn the selected blocks 90°.
 <b>D</b> (toolbar: Show flow / pressure data) shows or hides every flow and pressure label; while
@@ -6441,6 +7034,9 @@ class MainWindow(QMainWindow):
     # ---- palette ------------------------------------------------------------------
     def add_from_palette(self, template):
         view_center = self.view.mapToScene(self.view.viewport().rect().center())
+        if template.get('format') == 'pylon_assembly':
+            self.scene.place_assembly(template, (snap_to_grid(view_center.x()), snap_to_grid(view_center.y())))
+            return
         width, height = block_size(template['type'])
         occupied = self.scene.block_rectangles()
         base_position = (snap_to_grid(view_center.x()), snap_to_grid(view_center.y()))
@@ -6456,6 +7052,85 @@ class MainWindow(QMainWindow):
                 chosen_position = candidate
                 break
         self.scene.add_block(template_to_block_data(template), chosen_position)
+
+    # ---- assemblies --------------------------------------------------------------
+    def _write_library_file(self, name, template, title):
+        safe_name = re.sub(r'[^\w\- .()]+', '_', name.strip()).strip() or 'assembly'
+        os.makedirs(BLOCK_DIRECTORY, exist_ok=True)
+        path = os.path.join(BLOCK_DIRECTORY, safe_name + '.json')
+        if os.path.exists(path) and QMessageBox.question(
+                self, title, f"'{safe_name}.json' already exists. Overwrite?") != QMessageBox.StandardButton.Yes:
+            return None
+        try:
+            with open(path, 'w', encoding='utf-8') as file_handle:
+                json.dump(template, file_handle, indent=2)
+        except OSError as error:
+            QMessageBox.warning(self, title, str(error))
+            return None
+        self.block_palette.refresh()
+        self.statusBar().showMessage(f"Saved to {path}", 8000)
+        return path
+
+    def assembly_template(self, assembly_identifier, name):
+        """Library template for an assembly: its parts and tubes, all in one locked assembly."""
+        member_blocks, member_lines = self.scene.assembly_members(assembly_identifier)
+        payload = self.scene.copy_payload(member_blocks + member_lines)
+        for item in payload['blocks'] + payload['lines']:
+            item['assembly'] = 'assembly'
+        return {'format': 'pylon_assembly', 'version': FILE_FORMAT_VERSION, 'name': name,
+                'blocks': payload['blocks'], 'lines': payload['lines'],
+                'assemblies': {'assembly': {'name': name, 'locked': True}}}
+
+    def save_selection_as_assembly(self, items):
+        items = [item for item in items if isinstance(item, (BlockItem, LineItem))]
+        if not any(isinstance(item, BlockItem) for item in items):
+            self.statusBar().showMessage("Select the parts (and the lines between them) to save as an assembly.", 6000)
+            return
+        taken = {record['name'] for record in self.scene.assemblies.values()}
+        default_name = incremented_name('Assembly', taken) if 'Assembly' in taken else 'Assembly'
+        name, accepted = QInputDialog.getText(self, "Save assembly", "Name for the assembly:", text=default_name)
+        if not accepted or not name.strip():
+            return
+        # connecting tubes between the selected parts belong to the assembly too
+        payload = self.scene.copy_payload(items)
+        line_identifiers = {line['identifier'] for line in payload['lines']} if payload else set()
+        members = items + [line for line in self.scene.lines.values()
+                           if line.identifier in line_identifiers and line not in items]
+        assembly_identifier = self.scene.create_assembly(members, name.strip(), locked=True)
+        self._write_library_file(name.strip(), self.assembly_template(assembly_identifier, name.strip()),
+                                 "Save assembly")
+
+    def save_assembly(self, assembly_identifier):
+        record = self.scene.assemblies.get(assembly_identifier)
+        if record is None:
+            return
+        name, accepted = QInputDialog.getText(self, "Save assembly to library", "Name for the saved assembly:",
+                                              text=record['name'])
+        if not accepted or not name.strip():
+            return
+        self.scene.rename_assembly(assembly_identifier, name.strip())
+        self._write_library_file(name.strip(), self.assembly_template(assembly_identifier, name.strip()),
+                                 "Save assembly")
+
+    def rename_assembly(self, assembly_identifier):
+        record = self.scene.assemblies.get(assembly_identifier)
+        if record is None:
+            return
+        name, accepted = QInputDialog.getText(self, "Rename assembly", "Assembly name:", text=record['name'])
+        if accepted and name.strip():
+            self.scene.rename_assembly(assembly_identifier, name.strip())
+
+    def _unlock_for_editing(self, item):
+        """Parts of a locked assembly can't be modified; offer to unlock it."""
+        record = self.scene.assembly_record(item)
+        if not record or not record['locked']:
+            return True
+        if QMessageBox.question(self, "Locked assembly",
+                                f"“{record['name']}” is locked. Unlock it to modify its parts?"
+                                ) != QMessageBox.StandardButton.Yes:
+            return False
+        self.scene.set_assembly_locked(item.assembly_identifier, False)
+        return True
 
     def save_block(self, block):
         name, accepted = QInputDialog.getText(self, "Save Block", "Name for the saved block:", text=block.name)
@@ -6485,6 +7160,8 @@ class MainWindow(QMainWindow):
 
     # ---- editing -------------------------------------------------------------------
     def edit_block(self, block):
+        if not self._unlock_for_editing(block):
+            return
         calculated_values = (block.result or {}).get('calculated', {})
         extra_buttons = []
         if block.block_type == 'pump':
@@ -6505,6 +7182,8 @@ class MainWindow(QMainWindow):
             self.scene.notify()
 
     def edit_line(self, line):
+        if not self._unlock_for_editing(line):
+            return
         calculated_values = (line.result or {}).get('calculated', {})
         dialog = PropertyDialog(self, "Plumbing line properties", LINE_PROPERTIES, line.properties,
                                 calculated_values=calculated_values, name=line.name, tube_helper=True,
@@ -6517,6 +7196,8 @@ class MainWindow(QMainWindow):
             self.scene.notify()
 
     def edit_pump_curves(self, block):
+        if not self._unlock_for_editing(block):
+            return
         dialog = PumpCurveDialog(self, block, float(self.scene.fluid['density']))
         if dialog.exec():
             block.pump_curves = dialog.pump_curves

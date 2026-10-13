@@ -6,9 +6,11 @@
 
 ## Features
 
-- **Schematic editor (PySide6).** Starting blocks for a tank, latch valve, filter, flowmeter, pressure transducer, pump, thruster, orifice, tee, cross and 90° fitting.
+- **Schematic editor (PySide6).** Starting blocks for a tank, COPV, latch valve, fluid coupling, filter, flowmeter, fill & drain valve, pressure transducer, pump, thruster, orifice, tee, cross and 90° fitting.
   - Click a block's centre to toggle its state, double-click for properties, right-click for its menu.
   - Save customised blocks to a *Component Blocks* library shown in the left column.
+  - **COPVs** backfill a tank's ullage at their regulated pressure; **fluid couplings** open (with a flow restriction) or close; **fill & drain valves** are symbolic dead ends.
+- **Assemblies.** Save a group of connected parts and their tubes as one named block. Lock it to select and move it as a unit, or unlock it to modify the parts; save it to the library and place copies.
 - **Plumbing lines.** Orthogonal tubes that route around every component, never over it.
   - Draw section by section, drag segments and ends, add or delete segments, and combine several lines into one.
   - Lines can tap into other lines.
@@ -66,4 +68,4 @@ Python 3.9 or newer is required. To try the pump-curve import, right-click a pum
 
 ## Status
 
-Version 1.14. The solver passes its built-in self-test (`--selftest`), which covers closed-form orifice flow, Hagen–Poiseuille, Colebrook, the Cv relation, mass balances, orifice sizing, pump-curve interpolation and file upgrades. Verify the loss-coefficient defaults against your own hardware data before relying on results for design decisions.
+Version 1.15. The solver passes its built-in self-test (`--selftest`), which covers closed-form orifice flow, Hagen–Poiseuille, Colebrook, the Cv relation, mass balances, orifice sizing, pump-curve interpolation and file upgrades. Verify the loss-coefficient defaults against your own hardware data before relying on results for design decisions.
