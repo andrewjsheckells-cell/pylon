@@ -6,7 +6,7 @@ A PySide6 desktop tool for drawing a spacecraft liquid-propulsion feed-system sc
 
 | | |
 |---|---|
-| Program | `pylon.py` (single file, version 1.15) |
+| Program | `pylon.py` (single file, version 1.16) |
 | Requires | Python ≥ 3.9, `PySide6`, `numpy` |
 | Run | `pip install PySide6 numpy` then `python pylon.py [schematic.pylon.json]` |
 | Solver self-test (no GUI) | `python pylon.py --selftest` |
@@ -70,7 +70,7 @@ The interface uses a dark sci-fi console style taken from the user's reference s
   * The global setting and the per-element choices are saved in the schematic file.
 
 ### 2.2 Blocks
-* **Ports:** blocks take flow in on the left and send it out on the right. A tee's branch is on the bottom, and a 90° fitting's outlet is on the bottom. The **tank** is the exception: its **inlet is on the top** (fill or pressurant connection) and its **outlet is on the bottom**. A **COPV** has a single outlet on the bottom. Rotate 90° turns any block, ports included.
+* **Ports:** blocks take flow in on the left and send it out on the right. A tee's branch is on the bottom, and a 90° fitting's outlet is on the bottom. The **tank** is the exception: its **inlet is on the top** (fill or pressurant connection) and its **outlet is on the bottom**. A **COPV** has a single outlet on the bottom, and a **fill & drain valve** a single connection point on the left (its other side is capped). Rotate 90° turns any block, ports included.
 * **Move:** drag the body (multi-select with Ctrl-click or a rubber band).
 * **Toggle state:** click the centre zone of the block (the cursor becomes a pointing hand). Two-state blocks switch between their two states; the tank cycles Nominal → Maximum → Minimum pressure. **Tees, crosses, 90° fittings and fill & drain valves have no toggle**: fittings are always open, a fill & drain valve is always a dead end; none of them shows a state caption, a State menu or a state field.
 * **Right-click menu:** Properties…, State ▸ (pick any state directly), Rotate right 90° / Rotate left 90°, *Pump curves…* and *Find lowest RPM…* (pumps), *Size this orifice…* (orifices), *Show flow / pressure data here*, **Copy**, **Duplicate Block**, **Save Block…**, **Delete Block**. (Tees and 90° fittings have no State entry.)
@@ -144,7 +144,7 @@ Property names in the table are the labels shown in the Properties dialog; the `
 | Fluid Coupling (`fluid_coupling`) | inlet, outlet | Open / Closed | Equivalent orifice diameter (open, flow restriction) [in] `orifice_diameter`; Discharge coefficient `discharge_coefficient`; Flow coefficient Cv (open) `flow_coefficient`; Inlet tubing size; Outlet tubing size; Maximum pressure [psia] `maximum_pressure` | Inlet pressure; Outlet pressure; Pressure drop; Mass flow |
 | Filter | inlet, outlet | Clean / Maximum trapped particles | Equivalent orifice diameter, no trapped particles [in] `clean_orifice_diameter`; Equivalent orifice diameter, maximum trapped particles [in] `clogged_orifice_diameter`; Discharge coefficient `discharge_coefficient`; Flow coefficient Cv (clean) `clean_flow_coefficient`; Flow coefficient Cv (maximum trapped) `clogged_flow_coefficient`; Maximum pressure [psia] `maximum_pressure`; Inlet tubing size; Outlet tubing size | Inlet pressure; Outlet pressure; Pressure drop; Mass flow |
 | Flowmeter | inlet, outlet | Flowing / Blocked | Equivalent orifice diameter [in] `orifice_diameter`; Flow coefficient Cv `flow_coefficient`; Discharge coefficient `discharge_coefficient`; Maximum pressure [psia] `maximum_pressure`; Inlet tubing size; Outlet tubing size | Inlet pressure; Outlet pressure; Pressure drop; Measured mass flow |
-| Fill & Drain Valve (`fill_drain_valve`) | inlet, outlet | — (no toggle; always a closed dead end) | Inlet tubing size; Outlet tubing size; Maximum pressure [psia] `maximum_pressure` | Inlet pressure; Outlet pressure (each port reads its own side) |
+| Fill & Drain Valve (`fill_drain_valve`) | one connection (`inlet`, left) | — (no toggle; always a closed dead end) | Tubing size `inlet_tubing_size`; Maximum pressure [psia] `maximum_pressure` | Pressure at the valve [psia] `calculated_pressure` |
 | Pressure Transducer | inlet (bottom) | ON / OFF | Inlet tubing size `inlet_tubing_size` | Pressure reading [psia] `calculated_pressure` (shown under the block) |
 | Pump | inlet, outlet | ON / OFF | Speed [rpm] `revolutions_per_minute` (also editable on the block); Inlet tubing size; Outlet tubing size; Equivalent orifice diameter (stopped) [in] `stopped_orifice_diameter`; Discharge coefficient (stopped) `stopped_discharge_coefficient`; Flow coefficient Cv (stopped) `stopped_flow_coefficient`; Maximum inlet pressure `maximum_inlet_pressure`; Minimum inlet pressure `minimum_inlet_pressure`; Maximum outlet pressure [psia] `maximum_outlet_pressure`; Maximum differential pressure [psid] `maximum_differential_pressure`; imported RPM curves `pump_curves` | Inlet pressure; Outlet pressure; Pressure rise `calculated_pressure_rise`; Mass flow [g/s]; Volumetric flow [mL/min] `calculated_volumetric_flow` |
 | Thruster | inlet | ON / OFF | Specific impulse [s] `specific_impulse`; Nominal inlet pressure [psia] `nominal_inlet_pressure`; Maximum inlet pressure [psia] `maximum_inlet_pressure`; Equivalent orifice diameter [in] `orifice_diameter`; Discharge coefficient; Flow coefficient Cv; Inlet tubing size | Outlet pressure (hard-coded 0 psia); Inlet pressure; Flowrate [g/s]; Thrust [N] `calculated_thrust`; Flowrate and thrust at nominal inlet pressure `calculated_nominal_mass_flow`, `calculated_nominal_thrust` |
@@ -159,7 +159,7 @@ Notes
 * **Latch valve closed:** no flow when the closed-state ESEOD is 0, otherwise a leak orifice. **Flowmeter blocked**, **orifice OFF** and **thruster OFF** carry no flow. Tees and 90° fittings are always open; a tee or fitting saved as OFF by an earlier version opens as open. **Transducer OFF** hides its reading.
 * **COPV:** connect its outlet to a tank's **top inlet** through lines and open components. While *Backfilling* it holds that tank's ullage at the setpoint (or at the bottle pressure if the setpoint is 0 or above the bottle pressure), and the tank's *Nominal / Maximum / Minimum* state pressure is overridden. The tank shows "COPV backfill · X psia" and its result label reads "X psia (COPV)". *Isolated* returns the tank to its own state pressure. Pressurant passes through tees, crosses, 90° fittings and filters, and through latch valves, fluid couplings, flowmeters and orifices only when they are open; a closed one (or a pump, thruster, transducer or fill & drain valve) blocks it. With two COPVs on one tank the higher pressure wins. The pressurant lines carry no liquid, so they show 0 g/s.
 * **Fluid coupling:** *Open* = mated coupling with its flow restriction as an equivalent orifice; *Closed* = demated / capped, no flow.
-* **Fill & drain valve:** symbolic only. It connects like any in-line component but is a closed service port: each side is a dead end (no flow), and it reads the pressure on each side, like a transducer.
+* **Fill & drain valve:** symbolic only. It has **one connection point**, drawn as a closed hand valve with a cap on its service side. It is a dead end (no flow) and reads the pressure where it is connected, like a transducer. A line attached to the outlet of a v1.15 fill & drain valve is left with a free end when the file is opened.
 * **Pump OFF** acts as an orifice with the stopped-state ESEOD and Cd.
 * **Pump ON always follows its imported RPM curves** (since v1.9; the earlier fixed-flowrate mode was removed because it forced the set flow through whatever pressure that took, which drove the outlet pressure far too high whenever the downstream restriction did not match). The flow comes from the curve for the set speed as a function of the pump ΔP, so the outlet pressure settles where the pump curve meets the system. The flowrate is a calculated result, shown on the block's result plate and in Properties.
 * **Pump ON with no curves** is solved as stopped (the stopped-state orifice) and flagged with a warning badge: import curves with right-click → *Pump curves…*.
@@ -211,7 +211,7 @@ For a tube of inner diameter D, length L, area A, mass flow ṁ, velocity V = �
 | Pressure transducer | Dead-end pressure tap: reads the node pressure where it is connected |
 | COPV | **Ullage pressure source, not a flow element.** An ideal regulator (regulated pressure feed [SUTTON]) holds the connected tank's ullage at p = min(setpoint, bottle pressure), or the bottle pressure when the setpoint is 0. The connection is found by a separate union-find over lines and components that pass gas (see Notes in §3). Because the liquid is incompressible, the gas volume flow into the ullage equals the liquid volume flow leaving the tank: Q_gas = (ṁ_out − ṁ_in)/ρ, reported in mL/min. Bottle blow-down is not modelled (steady state). |
 | Fluid coupling | Open: equivalent sharp-edged orifice with its own ESEOD and Cd (the coupling's flow restriction). Closed: no flow. |
-| Fill & drain valve | No element. Its two ports are separate dead-end nodes: no flow passes, and each port reads the node pressure on its side. |
+| Fill & drain valve | No element. Its single port is a dead-end node: no flow passes, and it reads the node pressure there. |
 | Pump ON | ṁ = ρ·Q(Δp_pump, N), with N the set speed: the operating point is where the pump curve meets the system curve; inlet pressure = tank pressure − upstream losses. At a stored RPM the curve is piecewise linear in Δp with linear extrapolation. **Between two stored RPMs** N_low < N < N_high it interpolates linearly in speed at the same Δp: Q = (1 − w)·Q_low(Δp) + w·Q_high(Δp), w = (N − N_low)/(N_high − N_low) (exact for a positive-displacement pump, Q = displacement·N − slip(Δp)). **Outside the stored range** it uses the nearest end curve and lists a warning. |
 
 **How ESEOD is used.** The equivalent sharp-edged orifice diameter (ESEOD) is an **input**, not something the solver derives from upstream conditions. It is the diameter of the sharp-edged orifice that would pass the same flow as the component at the same pressure drop.
@@ -288,7 +288,7 @@ For an orifice in parallel with the pump (one side on the pump-outlet manifold, 
 * that a cross with identical loads on its outlet and both branches balances and splits the branch flows equally;
 * that a backfilling COPV sets the tank ullage to its setpoint, an isolated COPV leaves the tank at its own pressure, and a closed coupling between them blocks the backfill;
 * that an open fluid coupling in series with a thruster passes the series equivalent-orifice flow;
-* that a fill & drain valve in a feed line passes no flow and reads the upstream pressure;
+* that a fill & drain valve on a tank outlet passes no flow and reads the tank pressure, and that a line attached to a v1.15 fill & drain valve outlet is freed on load;
 * that copy names increment the last number (with zero padding), add " 1" when there is none, and skip names in use;
 * that a pump at a speed between two stored curves interpolates correctly (3500 rpm between 3000 and 4000 rpm gear-pump curves gives 396 mL/min at 200 psid), and that a speed outside the stored curves is reported.
 
@@ -580,8 +580,11 @@ Components table of the user guide (e.g. open_orifice_diameter, flow_coefficient
 - Fluid Coupling: ESEOD (open, flow restriction) 0.125 in, Cd, Cv, in/out tubing, max pressure;
   [Open, Closed]; pressures, ΔP, flow. Symbol: two coupling halves mated (open) or apart with sealed
   faces (closed).
-- Fill & Drain Valve: in/out tubing, max pressure; single state "Closed (dead end)", no toggle;
-  inlet/outlet pressure. Symbol: filled bow-tie valve with a T handle. Label "dead end · X psia".
+- Fill & Drain Valve: 120x90, ONE port (inlet, left edge); tubing size, max pressure; single state
+  "Closed (dead end)", no toggle; pressure at the valve. Symbol: lead line from the port, filled
+  bow-tie valve with a T handle, short stub and a thick cap bar on the right (service side). Label
+  "dead end · X psia". On load/paste, detach_missing_ports() frees any line end attached to a port
+  the block type no longer has (v1.15 outlet), and outlet_tubing_size is dropped.
 - Latch Valve: ESEOD open, ESEOD closed (leak, 0 = tight), Cd, Cv, inlet/outlet tubing, max pressure;
   [Open, Closed]; pressures, ΔP, flow.
 - Filter: ESEOD clean, ESEOD max trapped, Cd, Cv clean, Cv dirty, max pressure, in/out tubing;
@@ -657,8 +660,8 @@ PHYSICS
   passing blocks: tee, cross, elbow, filter always; latch valve, fluid coupling, flowmeter, orifice when
   open) is held at the COPV's delivered pressure min(setpoint, bottle) (bottle if setpoint 0); highest
   COPV wins. The COPV adds no flow element; backfill volume flow = (tank outflow − inflow)/ρ.
-- Fluid coupling: ESEO element when open, no flow when closed. Fill & drain valve: no element; each
-  port is its own dead-end node.
+- Fluid coupling: ESEO element when open, no flow when closed. Fill & drain valve: no element; its
+  single port is a dead-end node.
 - Tee: three arms to a centre node; Crane run 20 f_T and branch 60 f_T split so in+out = run and
   in+branch = branch; laminar K1 200 run and 500 branch.
 - 90° fitting: 30 f_T + 800/Re, plus area change if sizes differ.
@@ -749,3 +752,4 @@ CODE CONVENTIONS
 | 1.13 | 2026-10-13 | Labels moved close to their components, inside each block's invisible box: name just above the symbol, state caption / pump RPM row and results just below, or on a free side where an edge has a port. Tank labels sit inside the capsule. Latch valve, flowmeter, filter, orifice, thruster and pump footprints made taller so the labels fit; side port positions unchanged. |
 | 1.14 | 2026-10-13 | Copied or duplicated blocks are named from the original: the last number in the name + 1 (LV-1 → LV-2), or " 1" added when there is no number, counting on past names in use. Self-test check added. |
 | 1.15 | 2026-10-13 | New blocks: **COPV** (pressurant bottle; while backfilling it holds a connected tank's ullage at its regulated setpoint or bottle pressure, through open lines and components), **Fluid Coupling** (open with an equivalent-orifice flow restriction, or closed) and **Fill & Drain Valve** (symbolic; each side is a dead end). **Assemblies:** save a selection of connected parts and their tubes as a named group, lock it to move and select it as one block or unlock it to modify the parts, save it to the library and place copies. Self-test checks added. |
+| 1.16 | 2026-10-13 | Fill & drain valve has a single connection point (left), drawn with a cap on its service side; it reads the pressure where it is connected. Lines attached to the old outlet port are freed when a file is opened or pasted, and the outlet tubing size is dropped. Self-test checks updated. |

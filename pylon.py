@@ -83,7 +83,7 @@ import uuid
 import numpy
 
 APPLICATION_NAME = "Pylon"
-APPLICATION_VERSION = "1.15"
+APPLICATION_VERSION = "1.16"
 FILE_FORMAT_VERSION = 3
 
 # =============================================================================
@@ -395,16 +395,14 @@ BLOCK_TYPES = {
                     _calculated_property('calculated_mass_flow', 'Mass flow', 'g/s')],
         flow_coefficient_links=[('orifice_diameter', 'flow_coefficient', 'discharge_coefficient')]),
     'fill_drain_valve': dict(
-        # symbolic service valve: connects like a component but passes no flow (dead end each side)
+        # symbolic service valve: one connection point, capped on the service side, passes no flow
         label='Fill & Drain Valve', prefix='FDV', size=(120, 90),
-        symbol_extent=(18, 13, 22, 22), color='#7f8c8d',   # extent: symbol reach up/down/left/right
-        ports={'inlet': (-60, 0, -1, 0), 'outlet': (60, 0, 1, 0)},
+        symbol_extent=(18, 13, 22, 31), color='#7f8c8d',   # extent: symbol reach up/down/left/right
+        ports={'inlet': (-60, 0, -1, 0)},
         states=['Closed (dead end)'],
-        properties=[_tube_property('inlet_tubing_size', 'Inlet tubing size'),
-                    _tube_property('outlet_tubing_size', 'Outlet tubing size'),
+        properties=[_tube_property('inlet_tubing_size', 'Tubing size'),
                     PropertyDefinition('maximum_pressure', 'Maximum pressure', 'psia', 400.0),
-                    _calculated_property('calculated_inlet_pressure', 'Inlet pressure', 'psia'),
-                    _calculated_property('calculated_outlet_pressure', 'Outlet pressure', 'psia')],
+                    _calculated_property('calculated_pressure', 'Pressure at the valve', 'psia')],
         flow_coefficient_links=[]),
     'filter': dict(
         label='Filter', prefix='FL', size=(120, 110),
@@ -561,7 +559,7 @@ PORT_TUBING_PROPERTY = {
     'tank': {'inlet': 'inlet_tubing_size', 'outlet': 'outlet_tubing_size'},
     'copv': {'outlet': 'outlet_tubing_size'},
     'fluid_coupling': {'inlet': 'inlet_tubing_size', 'outlet': 'outlet_tubing_size'},
-    'fill_drain_valve': {'inlet': 'inlet_tubing_size', 'outlet': 'outlet_tubing_size'},
+    'fill_drain_valve': {'inlet': 'inlet_tubing_size'},
     'latch_valve': {'inlet': 'inlet_tubing_size', 'outlet': 'outlet_tubing_size'},
     'filter': {'inlet': 'inlet_tubing_size', 'outlet': 'outlet_tubing_size'},
     'flowmeter': {'inlet': 'inlet_tubing_size', 'outlet': 'outlet_tubing_size'},
@@ -740,7 +738,10 @@ PORT_RENAMES = {'in': 'inlet', 'out': 'outlet'}
 
 # Properties that no longer exist (removed from older versions); dropped when a file is read.
 #   pump: fixed-flow mode was removed in v1.9 - an ON pump always follows its RPM curves.
-OBSOLETE_PROPERTIES_BY_TYPE = {'pump': ('operating_model', 'flow_rate')}
+OBSOLETE_PROPERTIES_BY_TYPE = {'pump': ('operating_model', 'flow_rate'),
+                               # v1.15 fill & drain valves had a second (outlet) port
+                               'fill_drain_valve': ('outlet_tubing_size', 'calculated_inlet_pressure',
+                                                    'calculated_outlet_pressure')}
 
 
 def remove_obsolete_properties(block_type, properties):
@@ -749,8 +750,23 @@ def remove_obsolete_properties(block_type, properties):
     return properties
 
 
+def detach_missing_ports(blocks, lines):
+    """Free every line end attached to a port its block type no longer has (e.g. the outlet
+    of a v1.15 fill & drain valve), in place."""
+    type_by_identifier = {block.get('identifier'): block.get('type') for block in blocks}
+    for line in lines:
+        for end_name in ('start', 'end'):
+            attachment = line.get(end_name)
+            if attachment and attachment.get('kind') == 'port':
+                block_type = type_by_identifier.get(attachment.get('block'))
+                if block_type in BLOCK_TYPES and attachment.get('port') not in BLOCK_TYPES[block_type]['ports']:
+                    line[end_name] = None
+    return lines
+
+
 def remove_obsolete_model_properties(model):
-    """Drop obsolete properties from a current-version model, in place."""
+    """Drop obsolete properties (and attachments to removed ports) from a current-version
+    model, in place."""
     type_by_identifier = {}
     for block in model.get('blocks', []):
         remove_obsolete_properties(block.get('type'), block.get('properties'))
@@ -758,6 +774,7 @@ def remove_obsolete_model_properties(model):
     for scenario in model.get('scenarios', []) or []:
         for identifier, snapshot in (scenario.get('blocks') or {}).items():
             remove_obsolete_properties(type_by_identifier.get(identifier), snapshot.get('properties'))
+    detach_missing_ports(model.get('blocks', []), model.get('lines', []))
     return model
 
 
@@ -1713,16 +1730,14 @@ def solve_model(model, initial_guess=None):
             if delivered is not None and not served_tanks:
                 warnings.append("Not connected to a tank inlet (top port) through open lines and components")
         elif block_type == 'fill_drain_valve':
-            calculated['calculated_inlet_pressure'] = psia_from_pascals(inlet_pressure)
-            calculated['calculated_outlet_pressure'] = psia_from_pascals(outlet_pressure)
+            # single capped connection: a dead end that reads the pressure where it is connected
+            calculated['calculated_pressure'] = psia_from_pascals(inlet_pressure)
             block_result['label'] = ('dead end' if math.isnan(inlet_pressure)
                                      else f"dead end · {format_number(psia_from_pascals(inlet_pressure), 4)} psia")
             maximum_pressure = float(properties.get('maximum_pressure', 1e9))
-            for port_pressure in (inlet_pressure, outlet_pressure):
-                if not math.isnan(port_pressure) and port_pressure > maximum_pressure * PASCALS_PER_PSI:
-                    warnings.append(f"Pressure {format_number(psia_from_pascals(port_pressure))} psia exceeds "
-                                    f"maximum {format_number(maximum_pressure)} psia")
-                    break
+            if not math.isnan(inlet_pressure) and inlet_pressure > maximum_pressure * PASCALS_PER_PSI:
+                warnings.append(f"Pressure {format_number(psia_from_pascals(inlet_pressure))} psia exceeds "
+                                f"maximum {format_number(maximum_pressure)} psia")
         elif block_type == 'transducer':
             calculated['calculated_pressure'] = psia_from_pascals(inlet_pressure)
             block_result['reading'] = psia_from_pascals(inlet_pressure) if state == 0 else float('nan')
@@ -2831,13 +2846,20 @@ def run_self_test():
     check('Open coupling: series equivalent-orifice flow [kg/s]', coupling_results['blocks']['engine']['mass_flow'],
           series_area * math.sqrt(2 * DEFAULT_FLUID['density'] * 300 * PASCALS_PER_PSI), 1e-3)
     dead_end = solve_model(small_model([('tank', 'tank', 0, {'nominal_pressure': 300.0}),
-                                        ('service', 'fill_drain_valve', 0, {}),
-                                        ('engine', 'thruster', 0, {'inlet_tubing_size': DEFAULT_TUBE})],
-                                       [(('tank', 'outlet'), ('service', 'inlet')),
-                                        (('service', 'outlet'), ('engine', 'inlet'))]))
-    check('Fill & drain valve passes no flow [kg/s]', dead_end['blocks']['engine']['mass_flow'] + 1.0, 1.0, 1e-12)
+                                        ('service', 'fill_drain_valve', 0, {})],
+                                       [(('tank', 'outlet'), ('service', 'inlet'))]))
+    check('Fill & drain valve (one port) is a dead end: tank outflow [kg/s]',
+          dead_end['blocks']['tank']['mass_flow'] + 1.0, 1.0, 1e-12)
     check('Fill & drain valve reads the connected pressure [psia]',
-          dead_end['blocks']['service']['calculated']['calculated_inlet_pressure'], 300.0, 1e-9)
+          dead_end['blocks']['service']['calculated']['calculated_pressure'], 300.0, 1e-9)
+    old_valve = {'blocks': [{'identifier': 'service', 'type': 'fill_drain_valve',
+                             'properties': {'outlet_tubing_size': DEFAULT_TUBE}}],
+                 'lines': [{'identifier': 'tube', 'start': {'kind': 'port', 'block': 'service', 'port': 'outlet'},
+                            'end': {'kind': 'port', 'block': 'service', 'port': 'inlet'}}]}
+    remove_obsolete_model_properties(old_valve)
+    check('v1.15 fill & drain valve outlet: line end freed, outlet size dropped',
+          float(old_valve['lines'][0]['start'] is None and old_valve['lines'][0]['end'] is not None
+                and 'outlet_tubing_size' not in old_valve['blocks'][0]['properties']), 1.0, 0)
 
     print("Copy names")
     taken = {'LV-1', 'LV-2', 'Main valve', 'TK-09'}
@@ -3308,9 +3330,13 @@ def draw_symbol(painter, block_type, state, color):
             painter.drawLine(QPointF(8, -9), QPointF(8, 9))
             painter.setPen(pen)
     elif block_type == 'fill_drain_valve':
-        # normally closed hand valve (filled bow-tie) with a T handle: symbolic dead end
+        # normally closed hand valve (filled bow-tie) with a T handle and a capped service side:
+        # one connection point, symbolic dead end
         flow_line(-half_width, -22)
-        flow_line(22, half_width)
+        flow_line(22, 27)
+        painter.setPen(QPen(stroke_color, 4.0))
+        painter.drawLine(QPointF(29, -8), QPointF(29, 8))
+        painter.setPen(pen)
         painter.setBrush(stroke_color)
         painter.drawPolygon(QPolygonF([QPointF(-22, -13), QPointF(-22, 13), QPointF(0, 0)]))
         painter.drawPolygon(QPolygonF([QPointF(22, -13), QPointF(22, 13), QPointF(0, 0)]))
@@ -4847,6 +4873,7 @@ class SchematicScene(QGraphicsScene):
         payload = {'blocks': [upgrade_block_template(block) for block in payload.get('blocks', [])
                               if block.get('type') in BLOCK_TYPES],
                    'lines': copy.deepcopy(payload.get('lines', []))}
+        detach_missing_ports(payload['blocks'], payload['lines'])
         if not payload['blocks'] and not payload['lines']:
             return []
         left, top, right, bottom = self._payload_bounds(payload)
