@@ -26,9 +26,10 @@
 - **Quality of life.**
   - Undo/redo.
   - Copy/paste of blocks and groups.
-  - Rotate left/right.
+  - Rotate left/right and flip horizontally/vertically.
+  - Small / Medium / Large icon size per block, saved with the block.
   - Show or hide all flow/pressure data: hover to reveal it, or right-click to set it per item.
-  - PNG export.
+  - PNG export, and a clean black-and-white line drawing as SVG, PDF or PNG.
 - **Error log.** Errors and warnings are written to `Logs/pylon.log`, and unexpected errors open a dialog with the details. *Help → Generate error report…* saves one text file with the errors, current warnings, recent log and, optionally, the schematic.
 
 ## Physics basis
@@ -70,4 +71,4 @@ Python 3.9 or newer is required. To try the pump-curve import, right-click a pum
 
 ## Status
 
-Version 1.17. The solver passes its built-in self-test (`--selftest`), which covers closed-form orifice flow, Hagen–Poiseuille, Colebrook, the Cv relation, mass balances, orifice sizing, pump-curve interpolation and file upgrades. Verify the loss-coefficient defaults against your own hardware data before relying on results for design decisions.
+Version 1.18. The solver passes its built-in self-test (`--selftest`), which covers closed-form orifice flow, Hagen–Poiseuille, Colebrook, the Cv relation, mass balances, orifice sizing, pump-curve interpolation and file upgrades. Verify the loss-coefficient defaults against your own hardware data before relying on results for design decisions.

@@ -337,8 +337,8 @@ def _calculated_property(key, label, unit=''):
 BLOCK_TYPES = {
     'tank': dict(
         # drawn 4x the earlier tank: 176 x 280 capsule plus inlet / outlet tube stubs
-        label='Tank', prefix='TK', size=(200, 400), color='#3d6fb6',
-        ports={'inlet': (0, -200, 0, -1), 'outlet': (0, 200, 0, 1)},
+        label='Tank', prefix='TK', size=(200, 340), color='#3d6fb6',
+        ports={'inlet': (0, -170, 0, -1), 'outlet': (0, 170, 0, 1)},
         states=['Nominal pressure', 'Maximum pressure', 'Minimum pressure'],
         properties=[PropertyDefinition('volume', 'Volume', 'L', 10.0),
                     PropertyDefinition('maximum_pressure', 'Maximum pressure', 'psia', 60.0),
@@ -353,9 +353,9 @@ BLOCK_TYPES = {
         flow_coefficient_links=[]),
     'copv': dict(
         # composite overwrapped pressure vessel: pressurant bottle that backfills tank ullage
-        label='COPV', prefix='COPV', size=(100, 140),
-        symbol_extent=(55, 70, 30, 30), color='#8e7cc3',   # extent: symbol reach up/down/left/right
-        ports={'outlet': (0, 70, 0, 1)},
+        label='COPV', prefix='COPV', size=(100, 120),
+        symbol_extent=(55, 60, 30, 30), color='#8e7cc3',   # extent: symbol reach up/down/left/right
+        ports={'outlet': (0, 60, 0, 1)},
         states=['Backfilling', 'Isolated'],
         properties=[PropertyDefinition('volume', 'Volume', 'L', 10.0),
                     PropertyDefinition('bottle_pressure', 'Bottle pressure', 'psia', 3000.0),
@@ -370,9 +370,9 @@ BLOCK_TYPES = {
                                          'mL/min')],
         flow_coefficient_links=[]),
     'latch_valve': dict(
-        label='Latch Valve', prefix='LV', size=(120, 100),
+        label='Latch Valve', prefix='LV', size=(80, 100),
         symbol_extent=(25, 13, 22, 22), color='#7a4fb0',   # extent: symbol reach up/down/left/right
-        ports={'inlet': (-60, 0, -1, 0), 'outlet': (60, 0, 1, 0)},
+        ports={'inlet': (-40, 0, -1, 0), 'outlet': (40, 0, 1, 0)},
         states=['Open', 'Closed'],
         properties=[PropertyDefinition('open_orifice_diameter', 'Equivalent orifice diameter (open state)', 'in', 0.10),
                     PropertyDefinition('closed_orifice_diameter', 'Equivalent orifice diameter (closed state, leak)',
@@ -390,9 +390,9 @@ BLOCK_TYPES = {
         flow_coefficient_links=[('open_orifice_diameter', 'flow_coefficient', 'discharge_coefficient')]),
     'fluid_coupling': dict(
         # quick-disconnect style coupling: open (connected) with a flow restriction, or closed
-        label='Fluid Coupling', prefix='FC', size=(120, 90),
+        label='Fluid Coupling', prefix='FC', size=(80, 90),
         symbol_extent=(9, 9, 24, 24), color='#3a7d9c',   # extent: symbol reach up/down/left/right
-        ports={'inlet': (-60, 0, -1, 0), 'outlet': (60, 0, 1, 0)},
+        ports={'inlet': (-40, 0, -1, 0), 'outlet': (40, 0, 1, 0)},
         states=['Open', 'Closed'],
         properties=[PropertyDefinition('orifice_diameter', 'Equivalent orifice diameter (open, flow restriction)',
                                        'in', 0.125),
@@ -409,18 +409,18 @@ BLOCK_TYPES = {
         flow_coefficient_links=[('orifice_diameter', 'flow_coefficient', 'discharge_coefficient')]),
     'fill_drain_valve': dict(
         # symbolic service valve: one connection point, capped on the service side, passes no flow
-        label='Fill & Drain Valve', prefix='FDV', size=(120, 90),
+        label='Fill & Drain Valve', prefix='FDV', size=(80, 90),
         symbol_extent=(18, 13, 22, 31), color='#7f8c8d',   # extent: symbol reach up/down/left/right
-        ports={'inlet': (-60, 0, -1, 0)},
+        ports={'inlet': (-40, 0, -1, 0)},
         states=['Closed (dead end)'],
         properties=[_tube_property('inlet_tubing_size', 'Tubing size'),
                     PropertyDefinition('maximum_pressure', 'Maximum pressure', 'psia', 400.0),
                     _calculated_property('calculated_pressure', 'Pressure at the valve', 'psia')],
         flow_coefficient_links=[]),
     'filter': dict(
-        label='Filter', prefix='FL', size=(120, 110),
+        label='Filter', prefix='FL', size=(80, 110),
         symbol_extent=(19, 19, 20, 20), color='#2f8f6a',   # extent: symbol reach up/down/left/right
-        ports={'inlet': (-60, 0, -1, 0), 'outlet': (60, 0, 1, 0)},
+        ports={'inlet': (-40, 0, -1, 0), 'outlet': (40, 0, 1, 0)},
         states=['Clean', 'Maximum trapped particles'],
         properties=[PropertyDefinition('clean_orifice_diameter', 'Equivalent orifice diameter (no trapped particles)',
                                        'in', 0.06),
@@ -440,9 +440,9 @@ BLOCK_TYPES = {
         flow_coefficient_links=[('clean_orifice_diameter', 'clean_flow_coefficient', 'discharge_coefficient'),
                                 ('clogged_orifice_diameter', 'clogged_flow_coefficient', 'discharge_coefficient')]),
     'flowmeter': dict(
-        label='Flowmeter', prefix='FM', size=(120, 100),
+        label='Flowmeter', prefix='FM', size=(80, 100),
         symbol_extent=(17, 17, 17, 17), color='#b0742a',   # extent: symbol reach up/down/left/right
-        ports={'inlet': (-60, 0, -1, 0), 'outlet': (60, 0, 1, 0)},
+        ports={'inlet': (-40, 0, -1, 0), 'outlet': (40, 0, 1, 0)},
         states=['Flowing', 'Blocked'],
         properties=[PropertyDefinition('orifice_diameter', 'Equivalent orifice diameter', 'in', 0.07),
                     PropertyDefinition('flow_coefficient', 'Flow coefficient Cv', 'gpm/√psi', 0.0),
@@ -456,17 +456,17 @@ BLOCK_TYPES = {
                     _calculated_property('calculated_mass_flow', 'Measured mass flow', 'g/s')],
         flow_coefficient_links=[('orifice_diameter', 'flow_coefficient', 'discharge_coefficient')]),
     'transducer': dict(
-        label='Pressure Transducer', prefix='PT', size=(80, 80),
+        label='Pressure Transducer', prefix='PT', size=(80, 60),
         symbol_extent=(25, 9, 17, 17), color='#c0392b',   # extent: symbol reach up/down/left/right
-        ports={'inlet': (0, 40, 0, 1)},
+        ports={'inlet': (0, 30, 0, 1)},
         states=['ON', 'OFF'],
         properties=[_tube_property('inlet_tubing_size', 'Inlet tubing size'),
                     _calculated_property('calculated_pressure', 'Pressure reading', 'psia')],
         flow_coefficient_links=[]),
     'pump': dict(
-        label='Pump', prefix='P', size=(120, 120),
+        label='Pump', prefix='P', size=(80, 120),
         symbol_extent=(21, 21, 21, 21), color='#16758f',   # extent: symbol reach up/down/left/right
-        ports={'inlet': (-60, 0, -1, 0), 'outlet': (60, 0, 1, 0)},
+        ports={'inlet': (-40, 0, -1, 0), 'outlet': (40, 0, 1, 0)},
         states=['ON', 'OFF'],
         properties=[PropertyDefinition('revolutions_per_minute', 'Speed', 'rpm', 3000.0,
                                        tooltip='When ON the pump follows its imported curve for this speed '
@@ -488,9 +488,9 @@ BLOCK_TYPES = {
         flow_coefficient_links=[('stopped_orifice_diameter', 'stopped_flow_coefficient',
                                  'stopped_discharge_coefficient')]),
     'thruster': dict(
-        label='Thruster', prefix='TH', size=(120, 110),
+        label='Thruster', prefix='TH', size=(100, 110),
         symbol_extent=(21, 21, 34, 52), color='#d35400',   # extent: symbol reach up/down/left/right
-        ports={'inlet': (-60, 0, -1, 0)},
+        ports={'inlet': (-50, 0, -1, 0)},
         states=['ON', 'OFF'],
         properties=[PropertyDefinition('specific_impulse', 'Specific impulse', 's', 230.0),
                     PropertyDefinition('nominal_inlet_pressure', 'Nominal inlet pressure', 'psia', 300.0),
@@ -507,9 +507,9 @@ BLOCK_TYPES = {
                     _calculated_property('calculated_nominal_thrust', 'Thrust at nominal inlet pressure', 'N')],
         flow_coefficient_links=[('orifice_diameter', 'flow_coefficient', 'discharge_coefficient')]),
     'orifice': dict(
-        label='Orifice', prefix='OR', size=(120, 110),
+        label='Orifice', prefix='OR', size=(60, 110),
         symbol_extent=(20, 20, 4, 4), color='#566573',   # extent: symbol reach up/down/left/right
-        ports={'inlet': (-60, 0, -1, 0), 'outlet': (60, 0, 1, 0)},
+        ports={'inlet': (-30, 0, -1, 0), 'outlet': (30, 0, 1, 0)},
         states=['ON', 'OFF'],
         properties=[PropertyDefinition('orifice_diameter', 'Orifice diameter', 'in', 0.010),
                     _tube_property('inlet_tubing_size', 'Inlet tubing size'),
@@ -522,9 +522,9 @@ BLOCK_TYPES = {
                     _calculated_property('calculated_mass_flow', 'Mass flow (inlet→outlet)', 'g/s')],
         flow_coefficient_links=[]),
     'tee': dict(
-        label='Tee', prefix='T', size=(80, 80),
-        symbol_extent=(4, 40, 40, 40), color='#5d6d7e',   # extent: symbol reach up/down/left/right
-        ports={'inlet': (-40, 0, -1, 0), 'outlet': (40, 0, 1, 0), 'branch': (0, 40, 0, 1)},
+        label='Tee', prefix='T', size=(40, 40),             # arms 20 px (half the v1.17 length)
+        symbol_extent=(4, 20, 20, 20), color='#5d6d7e',   # extent: symbol reach up/down/left/right
+        ports={'inlet': (-20, 0, -1, 0), 'outlet': (20, 0, 1, 0), 'branch': (0, 20, 0, 1)},
         states=['Open'],                       # fittings are always open: no toggle
         properties=[_tube_property('inlet_tubing_size', 'Inlet tube size'),
                     _tube_property('outlet_tubing_size', 'Outlet tube size'),
@@ -536,10 +536,10 @@ BLOCK_TYPES = {
         flow_coefficient_links=[]),
     'cross': dict(
         # four-way fitting: run inlet -> outlet, branches up and down
-        label='Cross', prefix='X', size=(80, 80),
-        symbol_extent=(40, 40, 40, 40), color='#5d6d7e',   # extent: symbol reach up/down/left/right
-        ports={'inlet': (-40, 0, -1, 0), 'outlet': (40, 0, 1, 0),
-               'upper_branch': (0, -40, 0, -1), 'lower_branch': (0, 40, 0, 1)},
+        label='Cross', prefix='X', size=(40, 40),           # arms 20 px, like the tee
+        symbol_extent=(20, 20, 20, 20), color='#5d6d7e',   # extent: symbol reach up/down/left/right
+        ports={'inlet': (-20, 0, -1, 0), 'outlet': (20, 0, 1, 0),
+               'upper_branch': (0, -20, 0, -1), 'lower_branch': (0, 20, 0, 1)},
         states=['Open'],                       # fittings are always open: no toggle
         properties=[_tube_property('inlet_tubing_size', 'Inlet tube size'),
                     _tube_property('outlet_tubing_size', 'Outlet tube size'),
@@ -552,9 +552,9 @@ BLOCK_TYPES = {
                     _calculated_property('calculated_lower_branch_flow', 'Flow out (lower branch)', 'g/s')],
         flow_coefficient_links=[]),
     'elbow': dict(
-        label='90° Fitting', prefix='EL', size=(80, 80),
-        symbol_extent=(4, 40, 40, 4), color='#5d6d7e',   # extent: symbol reach up/down/left/right
-        ports={'inlet': (-40, 0, -1, 0), 'outlet': (0, 40, 0, 1)},
+        label='90° Fitting', prefix='EL', size=(40, 40),     # arms 20 px (half the v1.17 length)
+        symbol_extent=(4, 20, 20, 4), color='#5d6d7e',   # extent: symbol reach up/down/left/right
+        ports={'inlet': (-20, 0, -1, 0), 'outlet': (0, 20, 0, 1)},
         states=['Open'],                       # fittings are always open: no toggle
         properties=[_tube_property('inlet_tubing_size', 'Inlet tube size'),
                     _tube_property('outlet_tubing_size', 'Outlet tube size'),
@@ -2559,8 +2559,52 @@ def place_label(segment_start, segment_end, width, height, obstacles, gap=9):
 
 
 # ---- block geometry (shared by the GUI and the headless example builder) ----
-def block_size(block_type, orientation=0):
-    width, height = BLOCK_TYPES[block_type]['size']
+# Icon sizes: the whole block (symbol, box and port positions) is scaled; ports stay on the
+# 10 px grid so lines still route cleanly.
+ICON_SIZES = ('small', 'medium', 'large')
+ICON_SIZE_SCALES = {'small': 0.75, 'medium': 1.0, 'large': 1.5}
+ICON_SIZE_LABELS = {'small': 'Small', 'medium': 'Medium', 'large': 'Large'}
+_GEOMETRY_CACHE = {}
+
+
+def normalized_icon_size(icon_size):
+    return icon_size if icon_size in ICON_SIZE_SCALES else 'medium'
+
+
+def _round_to_grid(value, grid=10):
+    return math.floor(value / grid + 0.5) * grid
+
+
+def block_geometry(block_type, icon_size='medium'):
+    """Unrotated geometry of a block at an icon size: {'size': (width, height), 'ports':
+    {name: (x, y, direction_x, direction_y)}, 'extent': (up, down, left, right), 'scale'}.
+    Edge ports stay on the (scaled) box edge; every port lands on the 10 px grid."""
+    icon_size = normalized_icon_size(icon_size)
+    key = (block_type, icon_size)
+    if key not in _GEOMETRY_CACHE:
+        information = BLOCK_TYPES[block_type]
+        scale = ICON_SIZE_SCALES[icon_size]
+        width, height = information['size']
+        half_width = max(_round_to_grid(width / 2 * scale), 10)
+        half_height = max(_round_to_grid(height / 2 * scale), 10)
+
+        def scaled(value, base_half, new_half):
+            if value == 0:
+                return 0
+            if abs(abs(value) - base_half) < 1e-9:              # on the box edge: stay on it
+                return int(math.copysign(new_half, value))
+            return int(_round_to_grid(value * scale))
+        ports = {name: (scaled(x, width / 2, half_width), scaled(y, height / 2, half_height),
+                        direction_x, direction_y)
+                 for name, (x, y, direction_x, direction_y) in information['ports'].items()}
+        extent = tuple(reach * scale for reach in information.get('symbol_extent', (20, 20, 20, 20)))
+        _GEOMETRY_CACHE[key] = {'size': (2 * half_width, 2 * half_height), 'ports': ports,
+                                'extent': extent, 'scale': scale}
+    return _GEOMETRY_CACHE[key]
+
+
+def block_size(block_type, orientation=0, icon_size='medium'):
+    width, height = block_geometry(block_type, icon_size)['size']
     return (height, width) if orientation % 180 == 90 else (width, height)
 
 
@@ -2576,21 +2620,48 @@ def rotate_vector(x, y, orientation):
     return x, y
 
 
-def port_local_position(block_type, port_name, orientation=0):
-    x, y, direction_x, direction_y = BLOCK_TYPES[block_type]['ports'][port_name]
+def orient_vector(x, y, orientation=0, mirrored=False):
+    """Block frame -> screen frame: mirror left-right first (if mirrored), then rotate."""
+    return rotate_vector(-x if mirrored else x, y, orientation)
+
+
+def pose_matrix(orientation, mirrored):
+    first_x, first_y = orient_vector(1, 0, orientation, mirrored)
+    second_x, second_y = orient_vector(0, 1, orientation, mirrored)
+    return ((first_x, second_x), (first_y, second_y))
+
+
+def flipped_pose(orientation, mirrored, axis):
+    """(orientation, mirrored) after flipping a block on screen: axis 'horizontal' mirrors
+    left-right, 'vertical' mirrors top-bottom, whatever the block's current rotation."""
+    (a, b), (c, d) = pose_matrix(orientation, mirrored)
+    target = ((-a, -b), (c, d)) if axis == 'horizontal' else ((a, b), (-c, -d))
+    for candidate_mirrored in (False, True):
+        for candidate_orientation in (0, 90, 180, 270):
+            if pose_matrix(candidate_orientation, candidate_mirrored) == target:
+                return candidate_orientation, candidate_mirrored
+    return orientation, mirrored
+
+
+def port_local_position(block_type, port_name, orientation=0, mirrored=False, icon_size='medium'):
+    x, y, direction_x, direction_y = block_geometry(block_type, icon_size)['ports'][port_name]
+    if mirrored:
+        x, direction_x = -x, -direction_x
     position_x, position_y = rotate_vector(x, y, orientation)
     rotated_direction_x, rotated_direction_y = rotate_vector(direction_x, direction_y, orientation)
     return (position_x, position_y), (int(round(rotated_direction_x)), int(round(rotated_direction_y)))
 
 
 def block_rectangle(block):
-    width, height = block_size(block['type'], block.get('orientation', 0))
+    width, height = block_size(block['type'], block.get('orientation', 0), block.get('icon_size', 'medium'))
     return (block['x'] - width / 2, block['y'] - height / 2, block['x'] + width / 2, block['y'] + height / 2)
 
 
 def port_scene_position(block, port_name):
     (position_x, position_y), direction = port_local_position(block['type'], port_name,
-                                                              block.get('orientation', 0))
+                                                              block.get('orientation', 0),
+                                                              bool(block.get('mirrored', False)),
+                                                              block.get('icon_size', 'medium'))
     return (block['x'] + position_x, block['y'] + position_y), direction
 
 
@@ -2945,6 +3016,34 @@ def run_self_test():
     print(f"  [{'PASS' if naming_ok else 'FAIL'}] copy names increment the last number "
           f"({', '.join(f'{original} -> {incremented_name(original, taken)}' for original, _ in naming_cases)})")
     all_passed &= naming_ok
+    print("Block geometry: icon sizes and flips")
+    geometry_ok = True
+    for block_type in BLOCK_TYPES:
+        for icon_size in ICON_SIZES:
+            geometry = block_geometry(block_type, icon_size)
+            half_width, half_height = geometry['size'][0] / 2, geometry['size'][1] / 2
+            for x, y, direction_x, direction_y in geometry['ports'].values():
+                on_grid = x % 10 == 0 and y % 10 == 0
+                on_edge = ((direction_x and abs(x) == half_width) or (direction_y and abs(y) == half_height))
+                geometry_ok &= bool(on_grid and on_edge)
+    valve_reach = [block_geometry('latch_valve', icon_size)['ports']['outlet'][0] for icon_size in ICON_SIZES]
+    geometry_ok &= valve_reach == [30, 40, 60] and block_geometry('tee')['ports']['branch'][1] == 20
+    print(f"  [{'PASS' if geometry_ok else 'FAIL'}] every port on the 10 px grid and its box edge at every icon "
+          f"size; latch valve outlet small/medium/large = {valve_reach} px; tee arm 20 px")
+    flips_ok = True
+    for orientation in (0, 90, 180, 270):
+        for mirrored in (False, True):
+            for axis, screen_sign in (('horizontal', (-1, 1)), ('vertical', (1, -1))):
+                new_orientation, new_mirrored = flipped_pose(orientation, mirrored, axis)
+                (x, y), _ = port_local_position('latch_valve', 'outlet', orientation, mirrored)
+                (new_x, new_y), _ = port_local_position('latch_valve', 'outlet', new_orientation, new_mirrored)
+                flips_ok &= (new_x, new_y) == (screen_sign[0] * x, screen_sign[1] * y)
+                flips_ok &= flipped_pose(new_orientation, new_mirrored, axis) == (orientation, mirrored)
+    flips_ok &= flipped_pose(*flipped_pose(0, False, 'horizontal'), 'vertical') == (180, False)
+    print(f"  [{'PASS' if flips_ok else 'FAIL'}] flips mirror ports across the screen axes at every rotation, "
+          f"undo themselves, and H then V = rotate 180°")
+    all_passed &= geometry_ok and flips_ok
+
     print("Error report")
     report_model = build_example_model()
     report_results = solve_model(report_model)
@@ -3302,10 +3401,16 @@ class BezelDialog(QDialog):
 # -----------------------------------------------------------------------------
 # Symbols
 # -----------------------------------------------------------------------------
-def draw_pipe(painter, start, end, body_color=None):
-    """A short brass tube, drawn like the plumbing lines (dark outline, gold body, highlight)."""
+def draw_pipe(painter, start, end, body_color=None, monochrome=False):
+    """A short brass tube, drawn like the plumbing lines (dark outline, gold body, highlight);
+    a plain black line in a monochrome line drawing."""
     body_color = body_color or COLOR_LINE
     painter.save()
+    if monochrome:
+        painter.setPen(QPen(QColor('#000000'), 2.0))
+        painter.drawLine(start, end)
+        painter.restore()
+        return
     painter.setBrush(Qt.BrushStyle.NoBrush)
     for width, color in ((7.5, QColor(20, 12, 2, 235)), (4.2, body_color), (1.2, QColor(255, 244, 210, 150))):
         pipe_pen = QPen(color, width)
@@ -3315,14 +3420,21 @@ def draw_pipe(painter, start, end, body_color=None):
     painter.restore()
 
 
-def draw_symbol(painter, block_type, state, color):
-    """Draw a component symbol centred at the origin in the block's base
-    (unrotated) frame.  Flow runs left to right (the tank: top to bottom)."""
-    base_width, base_height = BLOCK_TYPES[block_type]['size']
+def draw_symbol(painter, block_type, state, color, size=None, orientation=0, mirrored=False, monochrome=False):
+    """Draw a component symbol centred at the origin in the block's base (unrotated,
+    unmirrored) frame.  Flow runs left to right (the tank: top to bottom).
+
+    `size` is the block box in symbol units (the tube stubs run from the symbol to its
+    edges, where the ports are); `orientation` and `mirrored` keep lettering upright and
+    readable; `monochrome` draws a clean black-on-white line drawing."""
+    base_width, base_height = size or BLOCK_TYPES[block_type]['size']
     half_width = base_width / 2.0
     dimmed = state != 0 and block_type in ('flowmeter', 'transducer', 'pump', 'thruster',
                                            'orifice', 'tee', 'elbow', 'copv', 'fluid_coupling')
-    stroke_color = QColor(THEME['off']) if dimmed else QColor(color)
+    if monochrome:
+        stroke_color = QColor('#000000')
+    else:
+        stroke_color = QColor(THEME['off']) if dimmed else QColor(color)
     pen = QPen(stroke_color, 2.0)
     pen.setCapStyle(Qt.PenCapStyle.RoundCap)
     pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
@@ -3330,30 +3442,40 @@ def draw_symbol(painter, block_type, state, color):
     painter.setBrush(Qt.BrushStyle.NoBrush)
     translucent_fill = QColor(stroke_color)
     translucent_fill.setAlpha(70)
-    interior_fill = QColor(THEME['background_field'])
+    interior_fill = QColor('#ffffff') if monochrome else QColor(THEME['background_field'])
+    if monochrome:
+        translucent_fill = interior_fill          # line drawing: no tinted fills
+    warning_color = stroke_color if monochrome else COLOR_WARNING
 
     def flow_line(start_x, end_x):
         painter.drawLine(QPointF(start_x, 0), QPointF(end_x, 0))
 
     def draw_letters(rectangle, letters, point_size=8.0):
+        # lettering stays upright and readable however the block is rotated or mirrored
         painter.save()
+        painter.translate(rectangle.center())
+        if mirrored:
+            painter.scale(-1, 1)
+        painter.rotate(-orientation)
         painter.setFont(make_font(point_size, True))
-        painter.drawText(rectangle, Qt.AlignmentFlag.AlignCenter, letters)
+        painter.drawText(QRectF(-rectangle.width() / 2, -rectangle.height() / 2, rectangle.width(),
+                                rectangle.height()), Qt.AlignmentFlag.AlignCenter, letters)
         painter.restore()
 
     if block_type == 'tank':
-        capsule = QRectF(-88, -160, 176, 280)              # 4x the earlier 44 x 70 capsule
+        capsule = QRectF(-88, -140, 176, 280)              # 4x the earlier 44 x 70 capsule
         capsule_path = QPainterPath()
         capsule_path.addRoundedRect(capsule, 80, 80)
         fill_level = {0: 0.6, 1: 0.85, 2: 0.3}.get(state, 0.6)
-        painter.save()
-        painter.setClipPath(capsule_path)
-        painter.fillRect(QRectF(capsule.left(), capsule.bottom() - capsule.height() * fill_level,
-                                capsule.width(), capsule.height() * fill_level), translucent_fill)
-        painter.restore()
+        if not monochrome:
+            painter.save()
+            painter.setClipPath(capsule_path)
+            painter.fillRect(QRectF(capsule.left(), capsule.bottom() - capsule.height() * fill_level,
+                                    capsule.width(), capsule.height() * fill_level), translucent_fill)
+            painter.restore()
         # inlet tube on top, outlet tube on the bottom (brass, like the plumbing lines)
-        draw_pipe(painter, QPointF(0, -base_height / 2), QPointF(0, capsule.top() + 2))
-        draw_pipe(painter, QPointF(0, capsule.bottom() - 2), QPointF(0, base_height / 2))
+        draw_pipe(painter, QPointF(0, -base_height / 2), QPointF(0, capsule.top() + 2), monochrome=monochrome)
+        draw_pipe(painter, QPointF(0, capsule.bottom() - 2), QPointF(0, base_height / 2), monochrome=monochrome)
         tank_pen = QPen(stroke_color, 3.0)
         tank_pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
         painter.setPen(tank_pen)
@@ -3371,7 +3493,7 @@ def draw_symbol(painter, block_type, state, color):
         painter.fillRect(bottle, translucent_fill if state == 0 else interior_fill)
         painter.restore()
         hatch_color = QColor(stroke_color)
-        hatch_color.setAlpha(110)
+        hatch_color.setAlpha(255 if monochrome else 110)
         painter.setPen(QPen(hatch_color, 1.0))
         corner_radius, half_width_inner, half_height_inner = 28.0, 30.0 - 28.0, 55.0 - 28.0
 
@@ -3394,7 +3516,7 @@ def draw_symbol(painter, block_type, state, color):
                         segment_start = None
                 if segment_start is not None:
                     painter.drawLine(QPointF(*segment_start), QPointF(*segment_end))
-        draw_pipe(painter, QPointF(0, bottle.bottom() - 2), QPointF(0, base_height / 2))
+        draw_pipe(painter, QPointF(0, bottle.bottom() - 2), QPointF(0, base_height / 2), monochrome=monochrome)
         painter.setPen(QPen(stroke_color, 2.5))
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawPath(bottle_path)
@@ -3458,7 +3580,7 @@ def draw_symbol(painter, block_type, state, color):
         painter.drawEllipse(QPointF(0, 0), 17, 17)
         draw_letters(QRectF(-17, -17, 34, 34), 'FM')
         if state == 1:
-            painter.setPen(QPen(COLOR_WARNING, 2.5))
+            painter.setPen(QPen(warning_color, 2.5))
             painter.drawLine(QPointF(-12, -12), QPointF(12, 12))
             painter.drawLine(QPointF(-12, 12), QPointF(12, -12))
     elif block_type == 'transducer':
@@ -3487,7 +3609,7 @@ def draw_symbol(painter, block_type, state, color):
         painter.setBrush(interior_fill)
         painter.drawRect(QRectF(-34, -11, 26, 22))
         painter.drawPolygon(QPolygonF([QPointF(-8, -6), QPointF(26, -21), QPointF(26, 21), QPointF(-8, 6)]))
-        if state == 0:
+        if state == 0 and not monochrome:
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QColor(235, 104, 52, 150))
             painter.drawPolygon(QPolygonF([QPointF(27, -14), QPointF(52, 0), QPointF(27, 14)]))
@@ -3501,19 +3623,19 @@ def draw_symbol(painter, block_type, state, color):
         else:
             painter.drawLine(QPointF(0, -20), QPointF(0, 20))
     elif block_type == 'tee':
-        painter.setPen(QPen(stroke_color, 5.0))
+        painter.setPen(QPen(stroke_color, 2.5 if monochrome else 5.0))
         flow_line(-half_width, half_width)
         painter.drawLine(QPointF(0, 0), QPointF(0, base_height / 2))
         painter.setBrush(stroke_color)
-        painter.drawEllipse(QPointF(0, 0), 4, 4)
+        painter.drawEllipse(QPointF(0, 0), 3.5 if monochrome else 4, 3.5 if monochrome else 4)
     elif block_type == 'cross':
-        painter.setPen(QPen(stroke_color, 5.0))
+        painter.setPen(QPen(stroke_color, 2.5 if monochrome else 5.0))
         flow_line(-half_width, half_width)
         painter.drawLine(QPointF(0, -base_height / 2), QPointF(0, base_height / 2))
         painter.setBrush(stroke_color)
-        painter.drawEllipse(QPointF(0, 0), 4, 4)
+        painter.drawEllipse(QPointF(0, 0), 3.5 if monochrome else 4, 3.5 if monochrome else 4)
     elif block_type == 'elbow':
-        painter.setPen(QPen(stroke_color, 5.0))
+        painter.setPen(QPen(stroke_color, 2.5 if monochrome else 5.0))
         elbow_path = QPainterPath(QPointF(-half_width, 0))
         elbow_path.lineTo(-14, 0)
         elbow_path.quadTo(QPointF(0, 0), QPointF(0, 14))
@@ -3592,6 +3714,11 @@ class LabelItem(QGraphicsItem):
 
     def paint(self, painter, option, widget=None):
         if not self.text:
+            return
+        if getattr(self.scene(), 'line_drawing', None) is not None:
+            painter.setPen(QColor('#000000'))           # line drawing: plain black text
+            painter.setFont(self.font)
+            painter.drawText(self.rectangle, Qt.AlignmentFlag.AlignCenter, self.text)
             return
         if self.plate:
             painter.setPen(QPen(QColor(217, 164, 65, 170), 1.0))
@@ -3804,6 +3931,8 @@ class BlockItem(DataLabelVisibility, QGraphicsItem):
         self.state = normalized_state(self.block_type, data.get('state', 0))
         self.pump_curves = copy.deepcopy(data.get('pump_curves') or {})
         self.orientation = int(data.get('orientation', 0)) % 360
+        self.mirrored = bool(data.get('mirrored', False))          # flipped left-right in its own frame
+        self.icon_size = normalized_icon_size(data.get('icon_size'))
         self.data_label_override = data.get('data_label_visibility')
         self._hover_reveal = False
         self.assembly_identifier = data.get('assembly')
@@ -3826,7 +3955,10 @@ class BlockItem(DataLabelVisibility, QGraphicsItem):
 
     # geometry -------------------------------------------------------------
     def size(self):
-        return block_size(self.block_type, self.orientation)
+        return block_size(self.block_type, self.orientation, self.icon_size)
+
+    def geometry(self):
+        return block_geometry(self.block_type, self.icon_size)
 
     def body_rectangle(self):
         width, height = self.size()
@@ -3834,12 +3966,13 @@ class BlockItem(DataLabelVisibility, QGraphicsItem):
 
     def scene_rectangle(self):
         return block_rectangle({'type': self.block_type, 'x': self.pos().x(), 'y': self.pos().y(),
-                                'orientation': self.orientation})
+                                'orientation': self.orientation, 'icon_size': self.icon_size})
 
     def layout_ports(self):
         self.prepareGeometryChange()
         for port_name, port in self.ports.items():
-            (position_x, position_y), direction = port_local_position(self.block_type, port_name, self.orientation)
+            (position_x, position_y), direction = port_local_position(self.block_type, port_name, self.orientation,
+                                                                      self.mirrored, self.icon_size)
             port.setPos(position_x, position_y)
             port.direction = direction
         self.place_side_labels()
@@ -3850,11 +3983,12 @@ class BlockItem(DataLabelVisibility, QGraphicsItem):
     SPEED_ROW_ON_WIDTH, SPEED_ROW_UNIT_WIDTH = 16.0, 21.0
 
     def symbol_extent(self):
-        """How far the symbol reaches up, down, left and right of the centre, after rotation."""
-        up, down, left, right = self.type_information.get('symbol_extent', (20, 20, 20, 20))
+        """How far the symbol reaches up, down, left and right of the centre, after the icon
+        size, mirroring and rotation."""
+        up, down, left, right = self.geometry()['extent']
         reach = {}
         for distance, (direction_x, direction_y) in ((up, (0, -1)), (down, (0, 1)), (left, (-1, 0)), (right, (1, 0))):
-            rotated_x, rotated_y = rotate_vector(direction_x, direction_y, self.orientation)
+            rotated_x, rotated_y = orient_vector(direction_x, direction_y, self.orientation, self.mirrored)
             reach[(int(rotated_x), int(rotated_y))] = float(distance)
         return reach[(0, -1)], reach[(0, 1)], reach[(-1, 0)], reach[(1, 0)]
 
@@ -3894,9 +4028,10 @@ class BlockItem(DataLabelVisibility, QGraphicsItem):
 
         if self.block_type == 'tank':
             # inside the capsule: name, state caption, results stacked down the middle
-            layout['name'] = (0.0, -62.0)
-            layout['result'] = (0.0, 34.0)
-            layout['caption'] = (-80.0, -26.0, 160.0, 24.0, 'center')
+            scale = self.geometry()['scale']
+            layout['name'] = (0.0, -42.0 * scale)
+            layout['result'] = (0.0, 54.0 * scale)
+            layout['caption'] = (-80.0 * scale, -6.0 * scale - 12.0, 160.0 * scale, 24.0, 'center')
         elif 'top' in free and 'bottom' in free:
             # name just above the symbol; caption (or pump speed row) and results just below
             layout['name'] = (0.0, -(up + gap + name_height / 2))
@@ -3978,8 +4113,12 @@ class BlockItem(DataLabelVisibility, QGraphicsItem):
         return QRectF(-width / 2 - 8, -height / 2 - 8, width + 16, height + 16)
 
     def toggle_zone(self):
-        width, height = self.size()
-        return QRectF(-width * 0.28, -height * 0.32, width * 0.56, height * 0.56)
+        """The middle of the block: the symbol itself (the tank: the middle of the capsule)."""
+        if self.block_type == 'tank':
+            width, height = self.size()
+            return QRectF(-width * 0.28, -height * 0.32, width * 0.56, height * 0.56)
+        up, down, left, right = self.symbol_extent()
+        return QRectF(-left - 4, -up - 4, left + right + 8, up + down + 8)
 
     # state ------------------------------------------------------------------
     def state_label(self):
@@ -4041,7 +4180,7 @@ class BlockItem(DataLabelVisibility, QGraphicsItem):
     def to_dictionary(self):
         data = {'identifier': self.identifier, 'type': self.block_type, 'name': self.name,
                 'x': self.pos().x(), 'y': self.pos().y(), 'orientation': self.orientation,
-                'state': self.state, 'properties': copy.deepcopy(self.properties),
+                'mirrored': self.mirrored, 'icon_size': self.icon_size, 'state': self.state, 'properties': copy.deepcopy(self.properties),
                 'pump_curves': copy.deepcopy(self.pump_curves)}
         if self.data_label_override is not None:
             data['data_label_visibility'] = self.data_label_override
@@ -4056,8 +4195,43 @@ class BlockItem(DataLabelVisibility, QGraphicsItem):
         self.setZValue(5 if self._hover_reveal and not self.data_labels_shown() else 1)
 
     # painting ---------------------------------------------------------------
+    def paint_symbol(self, painter, monochrome=False):
+        """The symbol at this block's icon size, mirroring and rotation."""
+        geometry = self.geometry()
+        scale = geometry['scale']
+        base_width, base_height = geometry['size']
+        painter.save()
+        painter.rotate(self.orientation)
+        if self.mirrored:
+            painter.scale(-1, 1)
+        painter.scale(scale, scale)
+        draw_symbol(painter, self.block_type, self.state, COLOR_SYMBOL, (base_width / scale, base_height / scale),
+                    self.orientation, self.mirrored, monochrome)
+        painter.restore()
+
+    def paint_line_drawing(self, painter, options):
+        """Black-on-white: the symbol, plus the state caption if asked for."""
+        self.paint_symbol(painter, monochrome=True)
+        caption = self.label_layout()['caption']
+        if options.get('states') and caption is not None and has_toggle(self.block_type):
+            row_left, row_top, row_width, row_height, alignment = caption
+            horizontal = {'center': Qt.AlignmentFlag.AlignHCenter, 'right': Qt.AlignmentFlag.AlignRight,
+                          'left': Qt.AlignmentFlag.AlignLeft}[alignment]
+            painter.setPen(QColor('#000000'))
+            painter.setFont(make_font(7.2))
+            text = self.state_label()
+            if self.speed_editor is not None and self.state == 0:
+                row_left, row_width = row_left - 10, row_width + 20     # pump row: the text replaces the speed box
+            painter.drawText(QRectF(row_left, row_top, row_width, row_height),
+                             horizontal | Qt.AlignmentFlag.AlignVCenter, text)
+
     def paint(self, painter, option, widget=None):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        scene = self.scene()
+        line_drawing = getattr(scene, 'line_drawing', None)
+        if line_drawing is not None:
+            self.paint_line_drawing(painter, line_drawing)
+            return
         width, height = self.size()
         body = QRectF(-width / 2, -height / 2, width, height)
         active = self.state == 0 or self.block_type in ('tank', 'filter')
@@ -4069,10 +4243,7 @@ class BlockItem(DataLabelVisibility, QGraphicsItem):
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(halo_fill)
             painter.drawRoundedRect(body.adjusted(-5, -5, 5, 5), 14, 14)
-        painter.save()
-        painter.rotate(self.orientation)
-        draw_symbol(painter, self.block_type, self.state, COLOR_SYMBOL)
-        painter.restore()
+        self.paint_symbol(painter)
         painter.setFont(make_font(7.2))
         painter.setPen(QColor(THEME['cyan_soft']) if active else QColor(THEME['off']))
         caption = self.label_layout()['caption']
@@ -4308,8 +4479,36 @@ class LineItem(DataLabelVisibility, QGraphicsPathItem):
         self.apply_data_label_visibility()
         self.update()
 
+    def paint_line_drawing(self, painter, options):
+        """Black-on-white tube: one thin line, junction dots, optional flow arrows."""
+        black = QColor('#000000')
+        pen = QPen(black, 2.0)
+        pen.setCapStyle(Qt.PenCapStyle.FlatCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.MiterJoin)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawPath(self.path())
+        if not self.points:
+            return
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(black)
+        for attachment, end_point in ((self.start, self.points[0]), (self.end, self.points[-1])):
+            if attachment and attachment.get('kind') == 'line':
+                painter.drawEllipse(to_qpoint(end_point), 3.5, 3.5)
+        if options.get('arrows'):
+            for (middle_x, middle_y), (direction_x, direction_y) in self.arrows:
+                normal_x, normal_y = -direction_y, direction_x
+                painter.drawPolygon(QPolygonF([
+                    QPointF(middle_x + direction_x * 5, middle_y + direction_y * 5),
+                    QPointF(middle_x - direction_x * 4 + normal_x * 4, middle_y - direction_y * 4 + normal_y * 4),
+                    QPointF(middle_x - direction_x * 4 - normal_x * 4, middle_y - direction_y * 4 - normal_y * 4)]))
+
     def paint(self, painter, option, widget=None):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        line_drawing = getattr(self.scene(), 'line_drawing', None)
+        if line_drawing is not None:
+            self.paint_line_drawing(painter, line_drawing)
+            return
         body_color = (COLOR_LINE_SELECTED if self.isSelected()
                       else (QColor(THEME['gold_highlight']) if self._hovered else COLOR_LINE))
         painter.setBrush(Qt.BrushStyle.NoBrush)
@@ -4460,6 +4659,7 @@ class SchematicScene(QGraphicsScene):
         self.assemblies = {}            # identifier -> {'name': str, 'locked': bool}
         self.assembly_outlines = {}     # identifier -> AssemblyOutlineItem
         self._expanding_selection = False
+        self.line_drawing = None           # options dict while exporting a black-and-white line drawing
         self.preview = QGraphicsPathItem()
         self.preview.setZValue(50)
         self.addItem(self.preview)
@@ -4571,6 +4771,9 @@ class SchematicScene(QGraphicsScene):
             outline.set_geometry(outline_rectangle, record['name'], record['locked'])
 
     def drawBackground(self, painter, rectangle):
+        if self.line_drawing is not None:            # black-and-white export: plain white page
+            painter.fillRect(rectangle, QColor('#ffffff'))
+            return
         background = QLinearGradient(QPointF(0, rectangle.top()), QPointF(0, rectangle.bottom()))
         background.setColorAt(0.0, QColor('#060a16'))
         background.setColorAt(1.0, QColor(THEME['background_deep']))
@@ -5074,6 +5277,37 @@ class SchematicScene(QGraphicsScene):
         self.on_block_moving(block)
         self.on_block_move_finished()
 
+    def flip_block(self, block, axis):
+        """Mirror a block on screen, left-right (axis 'horizontal') or top-bottom ('vertical');
+        its ports move with it and attached lines re-route."""
+        if self.is_locked_item(block):
+            self.message.emit(f"'{self.assembly_record(block)['name']}' is locked — unlock the assembly to "
+                              "flip its parts.")
+            return
+        block.orientation, block.mirrored = flipped_pose(block.orientation, block.mirrored, axis)
+        block.layout_ports()
+        block.update()
+        self.on_block_moving(block)
+        self.on_block_move_finished()
+
+    def set_icon_size(self, blocks, icon_size):
+        """Small / Medium / Large icon for each block (symbol, box and ports scale together)."""
+        icon_size = normalized_icon_size(icon_size)
+        for block in blocks:
+            if self.is_locked_item(block):
+                self.message.emit(f"'{self.assembly_record(block)['name']}' is locked — unlock the assembly to "
+                                  "resize its parts.")
+                continue
+            if block.icon_size == icon_size:
+                continue
+            block.prepareGeometryChange()
+            block.icon_size = icon_size
+            block.layout_ports()
+            block.update()
+            self.on_block_moving(block)
+        self.on_block_move_finished()
+        self.notify(physics_changed=False)
+
     # ---- port-drag connections ---------------------------------------------
     def begin_connection(self, port):
         self.connection = {'port': port}
@@ -5377,6 +5611,15 @@ class SchematicScene(QGraphicsScene):
         menu.addAction("Rotate right 90°\tR", lambda: [self.rotate_block(target, True) for target in rotate_targets])
         menu.addAction("Rotate left 90°\tShift+R",
                        lambda: [self.rotate_block(target, False) for target in rotate_targets])
+        menu.addAction("Flip horizontal\tH", lambda: [self.flip_block(target, 'horizontal') for target in rotate_targets])
+        menu.addAction("Flip vertical\tV", lambda: [self.flip_block(target, 'vertical') for target in rotate_targets])
+        size_menu = menu.addMenu("Icon size")
+        for icon_size in ICON_SIZES:
+            size_action = size_menu.addAction(ICON_SIZE_LABELS[icon_size])
+            size_action.setCheckable(True)
+            size_action.setChecked(block.icon_size == icon_size)
+            size_action.triggered.connect(lambda checked=False, icon_size=icon_size:
+                                          self.set_icon_size(rotate_targets, icon_size))
         self._add_data_label_action(menu, block)
         if block.block_type == 'pump':
             menu.addAction("Pump curves…", lambda: self.main_window.edit_pump_curves(block))
@@ -5620,7 +5863,8 @@ def template_to_block_data(template):
     properties.update(copy.deepcopy(template.get('properties') or {}))
     return {'type': block_type, 'properties': properties, 'state': int(template.get('state', 0)),
             'pump_curves': copy.deepcopy(template.get('pump_curves') or {}),
-            'orientation': int(template.get('orientation', 0))}
+            'orientation': int(template.get('orientation', 0)), 'mirrored': bool(template.get('mirrored', False)),
+            'icon_size': normalized_icon_size(template.get('icon_size'))}
 
 
 # -----------------------------------------------------------------------------
@@ -6893,8 +7137,9 @@ outlet at the bottom; the cross has branches at the top and bottom). The tank ha
 its outlet on the bottom.</p>
 <p><b>Blocks</b> — click or drag from the <i>Component Blocks</i> column. Drag a block to move it.
 Click the <b>centre</b> of a block to toggle its state (tees, crosses and 90° fittings have no toggle).
-Right-click for Properties, State, Rotate, Copy, Duplicate Block, Save Block and Delete Block.
-Double-click the body for properties.
+Right-click for Properties, State, Rotate, Flip, Icon size, Copy, Duplicate Block, Save Block and
+Delete Block. R / Shift+R rotate, H / V flip horizontally / vertically; Icon size (Small, Medium,
+Large) is saved with the block. Double-click the body for properties.
 <b>Assemblies</b> — select connected parts and tubes, right-click → <i>Save selection as assembly…</i>
 to save them to the Component Blocks library as one block. A <b>locked</b> assembly (padlock closed)
 selects, moves, copies and deletes as one unit and protects its parts; right-click → Assembly →
@@ -6919,11 +7164,46 @@ right-click → <b>Combine</b>.</p>
 direction); block results beside each block. Middle-drag pans, wheel zooms, F fits.</p>
 <p><b>Analysis</b> — Scenarios tab stores toggle states and properties. Analysis → Size bypass
 orifice… and Find lowest pump RPM… work on the current state and/or any saved scenarios.</p>
+<p><b>Line drawing</b> — File → Export line drawing… saves a clean black-and-white drawing of the
+schematic (SVG, PDF or PNG), with optional names, states, flow / pressure data and arrows.</p>
 <p><b>Error log</b> — errors and warnings are written to <i>Logs/pylon.log</i> next to the program.
 An unexpected error opens a dialog with its details. Help → <b>Generate error report…</b>
 (Ctrl+Shift+E) saves a text report (errors, current warnings, recent log and, optionally, the
 schematic) to send with a problem; Help → Open log folder shows the logs.</p>
 """
+
+
+class LineDrawingDialog(BezelDialog):
+    """Options for File → Export line drawing…"""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.setWindowTitle("Export line drawing")
+        self.resize(460, 300)
+        layout = QVBoxLayout(self)
+        intro = QLabel("A clean black-and-white drawing of the whole schematic: component symbols and "
+                       "tubes as black lines on white, with no grid, colours, ports, selection or "
+                       "warnings. Choose SVG or PDF for a scalable drawing, or PNG for a 3× image.")
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+        self.boxes = {}
+        for key, text, default in (('names', "Component names", True),
+                                   ('states', "Component states (Open, Closed, ON …)", False),
+                                   ('data', "Flow and pressure data", False),
+                                   ('arrows', "Flow-direction arrows on the tubes", False)):
+            box = QCheckBox(text)
+            box.setChecked(default)
+            layout.addWidget(box)
+            self.boxes[key] = box
+        layout.addStretch(1)
+        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        accent_buttons(button_box)
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
+
+    def options(self):
+        return {key: box.isChecked() for key, box in self.boxes.items()}
 
 
 class MainWindow(QMainWindow):
@@ -7010,6 +7290,9 @@ class MainWindow(QMainWindow):
         file_menu.addAction(self._make_action("Save As…", self.save_as, "Ctrl+Shift+S"))
         file_menu.addSeparator()
         file_menu.addAction(self._make_action("Export image (PNG)…", self.export_image))
+        file_menu.addAction(self._make_action("Export line drawing (black and white)…", self.export_line_drawing,
+                                              "Ctrl+Shift+P",
+                                              tooltip="Clean black-and-white line drawing as PNG, SVG or PDF"))
         file_menu.addAction(self._make_action("Open Component Blocks folder location", self.show_block_directory))
         file_menu.addSeparator()
         file_menu.addAction(self._make_action("Quit", self.close, "Ctrl+Q"))
@@ -7047,6 +7330,17 @@ class MainWindow(QMainWindow):
                                                      tooltip="Rotate the selected blocks 90° clockwise (R)")
         edit_menu.addAction(self.rotate_left_action)
         edit_menu.addAction(self.rotate_right_action)
+        self.flip_horizontal_action = self._make_action("⇋ Flip horizontal", lambda: self.flip_selected('horizontal'),
+                                                        "H", tooltip="Mirror the selected blocks left-right (H)")
+        self.flip_vertical_action = self._make_action("⇵ Flip vertical", lambda: self.flip_selected('vertical'),
+                                                      "V", tooltip="Mirror the selected blocks top-bottom (V)")
+        edit_menu.addAction(self.flip_horizontal_action)
+        edit_menu.addAction(self.flip_vertical_action)
+        icon_size_menu = edit_menu.addMenu("Icon size")
+        for icon_size in ICON_SIZES:
+            icon_size_menu.addAction(self._make_action(
+                ICON_SIZE_LABELS[icon_size], lambda checked=False, icon_size=icon_size: self.set_selected_icon_size(icon_size),
+                tooltip=f"Draw the selected blocks at {ICON_SIZE_LABELS[icon_size].lower()} size"))
         edit_menu.addAction(self._make_action("Select all", self.select_all, "Ctrl+A"))
 
         view_menu = menu_bar.addMenu("&View")
@@ -7096,6 +7390,8 @@ class MainWindow(QMainWindow):
         toolbar.addAction(self.draw_action)
         toolbar.addAction(self.rotate_left_action)
         toolbar.addAction(self.rotate_right_action)
+        toolbar.addAction(self.flip_horizontal_action)
+        toolbar.addAction(self.flip_vertical_action)
         toolbar.addSeparator()
         toolbar.addAction(self.labels_action)
         toolbar.addSeparator()
@@ -7217,7 +7513,8 @@ class MainWindow(QMainWindow):
         if template.get('format') == 'pylon_assembly':
             self.scene.place_assembly(template, (snap_to_grid(view_center.x()), snap_to_grid(view_center.y())))
             return
-        width, height = block_size(template['type'])
+        width, height = block_size(template['type'], int(template.get('orientation', 0)),
+                                   normalized_icon_size(template.get('icon_size')))
         occupied = self.scene.block_rectangles()
         base_position = (snap_to_grid(view_center.x()), snap_to_grid(view_center.y()))
         chosen_position = base_position
@@ -7325,6 +7622,7 @@ class MainWindow(QMainWindow):
             return
         template = {'format': 'pylon_block', 'version': FILE_FORMAT_VERSION, 'name': name.strip(),
                     'type': block.block_type, 'state': block.state, 'orientation': block.orientation,
+                    'mirrored': block.mirrored, 'icon_size': block.icon_size,
                     'properties': copy.deepcopy(block.properties), 'pump_curves': copy.deepcopy(block.pump_curves)}
         try:
             with open(path, 'w', encoding='utf-8') as file_handle:
@@ -7480,6 +7778,23 @@ class MainWindow(QMainWindow):
         for block in selected_blocks:
             self.scene.rotate_block(block, clockwise)
 
+    def flip_selected(self, axis):
+        if self._text_editing():
+            return
+        selected_blocks = [item for item in self.scene.selectedItems() if isinstance(item, BlockItem)]
+        if not selected_blocks:
+            self.statusBar().showMessage("Select one or more blocks to flip.", 4000)
+            return
+        for block in selected_blocks:
+            self.scene.flip_block(block, axis)
+
+    def set_selected_icon_size(self, icon_size):
+        selected_blocks = [item for item in self.scene.selectedItems() if isinstance(item, BlockItem)]
+        if not selected_blocks:
+            self.statusBar().showMessage("Select one or more blocks to resize.", 4000)
+            return
+        self.scene.set_icon_size(selected_blocks, icon_size)
+
     def set_show_data_labels(self, visible):
         self.scene.set_show_labels(visible)
         self.scene.notify(physics_changed=False)
@@ -7614,6 +7929,118 @@ class MainWindow(QMainWindow):
             return False
         self.file_path = path
         return self.save()
+
+    # ---- black-and-white line drawing ------------------------------------------------
+    def export_line_drawing(self, path=None, options=None):
+        """File → Export line drawing…: the schematic as a clean black-on-white drawing
+        (PNG at 3×, SVG or PDF by file extension), without the console styling, grid,
+        selection, ports or warnings.  Names are on by default; states, flow / pressure
+        data and flow arrows are optional."""
+        if options is None:
+            dialog = LineDrawingDialog(self)
+            if not dialog.exec():
+                return None
+            options = dialog.options()
+        if path is None:
+            path, _ = QFileDialog.getSaveFileName(
+                self, "Export line drawing", os.path.join(SCRIPT_DIRECTORY, 'schematic_line_drawing.svg'),
+                "SVG drawing (*.svg);;PDF document (*.pdf);;PNG image (*.png)")
+            if not path:
+                return None
+        extension = os.path.splitext(path)[1].lower()
+        if extension not in ('.svg', '.pdf', '.png'):
+            path, extension = path + '.svg', '.svg'
+        scene = self.scene
+        scene.clearSelection()
+        hidden = []                             # (item, was_visible) to restore afterwards
+
+        def show(item, visible):
+            hidden.append((item, item.isVisible()))
+            item.setVisible(visible)
+        try:
+            scene.line_drawing = dict(options)
+            for block in scene.blocks.values():
+                for port in block.ports.values():
+                    show(port, False)
+                if block.speed_editor is not None:
+                    show(block.speed_editor, False)
+                show(block.name_label, bool(options.get('names')) and bool(block.name_label.text))
+                show(block.result_label, bool(options.get('data')) and bool(block.result_label.text))
+            for line in scene.lines.values():
+                for label in line.labels:
+                    show(label, bool(options.get('data')) and bool(getattr(label, 'text', '')))
+            for outline in scene.assembly_outlines.values():
+                show(outline, False)
+            show(scene.preview, False)
+            bounds = QRectF()
+            for item in list(scene.blocks.values()) + list(scene.lines.values()):
+                bounds = bounds.united(item.sceneBoundingRect())
+                for child in item.childItems():
+                    if child.isVisible():
+                        bounds = bounds.united(child.sceneBoundingRect())
+            for line in scene.lines.values():
+                for label in line.labels:
+                    if label.isVisible():
+                        bounds = bounds.united(label.sceneBoundingRect())
+            bounds = bounds.adjusted(-20, -20, 20, 20)
+            self._render_line_drawing(path, extension, bounds)
+        except Exception as error:
+            ERROR_LOG.record_error(f"Could not export line drawing {path}: {error}", traceback.format_exc())
+            QMessageBox.warning(self, "Export line drawing", f"Could not write {path}:\n{error}")
+            return None
+        finally:
+            scene.line_drawing = None
+            for item, was_visible in reversed(hidden):
+                item.setVisible(was_visible)
+            for block in scene.blocks.values():
+                block.apply_data_label_visibility()
+            scene.update()
+        LOGGER.info("Exported line drawing %s", path)
+        self.statusBar().showMessage(f"Exported line drawing {path}", 6000)
+        return path
+
+    def _render_line_drawing(self, path, extension, bounds):
+        width, height = bounds.width(), bounds.height()
+        if extension == '.png':
+            scale = min(3.0, 12000.0 / max(width, height, 1.0))   # ~300 dpi, capped at 12000 px
+            image = QImage(int(width * scale), int(height * scale), QImage.Format.Format_ARGB32)
+            image.fill(QColor('#ffffff'))
+            painter = QPainter(image)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+            self.scene.render(painter, QRectF(0, 0, width * scale, height * scale), bounds)
+            painter.end()
+            if not image.save(path):
+                raise OSError("image could not be written")
+            return
+        if extension == '.svg':
+            from PySide6.QtCore import QSize
+            from PySide6.QtSvg import QSvgGenerator
+            generator = QSvgGenerator()
+            generator.setFileName(path)
+            generator.setSize(QSize(int(width), int(height)))
+            generator.setViewBox(QRectF(0, 0, width, height))
+            generator.setTitle(os.path.splitext(os.path.basename(self.file_path or 'schematic'))[0])
+            generator.setDescription(f"{APPLICATION_NAME} {APPLICATION_VERSION} line drawing")
+            painter = QPainter(generator)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            self.scene.render(painter, QRectF(0, 0, width, height), bounds)
+            painter.end()
+            return
+        from PySide6.QtCore import QMarginsF, QSizeF
+        from PySide6.QtGui import QPageLayout, QPageSize, QPdfWriter
+        writer = QPdfWriter(path)
+        writer.setResolution(96)
+        writer.setTitle(os.path.splitext(os.path.basename(self.file_path or 'schematic'))[0])
+        writer.setCreator(f"{APPLICATION_NAME} {APPLICATION_VERSION}")
+        page_size = QPageSize(QSizeF(width * 0.75, height * 0.75), QPageSize.Unit.Point, 'Schematic',
+                              QPageSize.SizeMatchPolicy.ExactMatch)
+        writer.setPageLayout(QPageLayout(page_size, QPageLayout.Orientation.Portrait, QMarginsF(0, 0, 0, 0)))
+        painter = QPainter(writer)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        target = QRectF(0, 0, writer.width(), writer.height())
+        self.scene.render(painter, target, bounds)
+        painter.end()
 
     def export_image(self):
         path, _ = QFileDialog.getSaveFileName(self, "Export image", os.path.join(SCRIPT_DIRECTORY, 'schematic.png'),

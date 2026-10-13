@@ -6,7 +6,7 @@ A PySide6 desktop tool for drawing a spacecraft liquid-propulsion feed-system sc
 
 | | |
 |---|---|
-| Program | `pylon.py` (single file, version 1.17) |
+| Program | `pylon.py` (single file, version 1.18) |
 | Requires | Python ≥ 3.9, `PySide6`, `numpy` |
 | Run | `pip install PySide6 numpy` then `python pylon.py [schematic.pylon.json]` |
 | Solver self-test (no GUI) | `python pylon.py --selftest` |
@@ -54,9 +54,9 @@ The interface uses a dark sci-fi console style taken from the user's reference s
 * **Right: Results and Scenarios tabs** (tabs on top; each panel in its own bezel frame).
   * *Results:* a solver status line, total thruster flow vs nominal, thrust, and the pump balance (pump flow = thruster flow + orifice flow). Below that are a table of every block and line section and a list of warnings. Double-click a row or warning to select that item on the canvas.
   * *Scenarios:* save, update, apply, rename, duplicate and delete scenarios.
-* **Toolbar:** Undo, Redo │ Select/Move, Draw Line, ⟲ Rotate left, Rotate right ⟳ │ Show flow / pressure data │ Solve, Auto-solve, Fit │ Fluid…, Size Orifice…, Lowest RPM….
+* **Toolbar:** Undo, Redo │ Select/Move, Draw Line, ⟲ Rotate left, Rotate right ⟳, ⇋ Flip horizontal, ⇵ Flip vertical │ Show flow / pressure data │ Solve, Auto-solve, Fit │ Fluid…, Size Orifice…, Lowest RPM….
 
-### 2.1a Undo, rotate and data visibility
+### 2.1a Undo, rotate, flip, icon size and data visibility
 * **Undo / Redo** (toolbar, Edit menu, **Ctrl+Z** / **Ctrl+Y** or Ctrl+Shift+Z).
   * Every change to the schematic is one undo step: adding, moving, rotating, deleting, pasting or editing blocks and lines, toggling states, editing properties, scenarios, fluid settings, and data-label visibility.
   * Changes made in the same moment (e.g. rotating several selected blocks) are one step.
@@ -64,6 +64,8 @@ The interface uses a dark sci-fi console style taken from the user's reference s
   * Up to 200 steps are kept. The history starts fresh when a file is opened or a new one started.
   * Selection and zoom are not undo steps.
 * **Rotate left / right** (toolbar, Edit menu, block right-click menu; **R** = right/clockwise, **Shift+R** = left/counter-clockwise) turns every selected block 90°, ports and symbol included; attached lines re-route.
+* **Flip horizontal / vertical** (toolbar, Edit menu, block right-click menu; **H** = horizontal, **V** = vertical) mirrors every selected block left-right or top-bottom on screen, whatever its rotation. The ports move with it (a horizontally flipped valve takes flow in on the right), and attached lines re-route. Lettering inside symbols (FM, PT) stays upright and readable. Flipping twice restores the block; horizontal then vertical equals a 180° rotation.
+* **Icon size: Small, Medium or Large** (block right-click menu → *Icon size*, or *Edit → Icon size* for the selection) scales a block's symbol, footprint and tube stubs to 0.75×, 1× or 1.5×. Ports stay on the 10 px grid, and attached lines re-route. The size belongs to the block: it is saved in the schematic, in saved blocks (*Save Block…*), in copies and in assemblies. Placing a saved block uses its saved size, flip and rotation. Parts of a locked assembly can't be flipped or resized until it is unlocked.
 * **Show flow / pressure data** (toolbar toggle, View menu, empty-canvas right-click, **D**) shows or hides every flow and pressure label at once: line ṁ / ΔP labels, block result labels and transducer readings. Block names and the pump's flowrate box stay visible.
   * **While the data are hidden, hovering over a block or line shows its labels** (drawn above neighbouring items) until the mouse leaves.
   * **Per element:** right-click a block or line → *Show flow / pressure data here* (checkable) shows or hides that element's labels regardless of the global switch. With several items selected it applies to all of them.
@@ -71,10 +73,10 @@ The interface uses a dark sci-fi console style taken from the user's reference s
   * The global setting and the per-element choices are saved in the schematic file.
 
 ### 2.2 Blocks
-* **Ports:** blocks take flow in on the left and send it out on the right. A tee's branch is on the bottom, and a 90° fitting's outlet is on the bottom. The **tank** is the exception: its **inlet is on the top** (fill or pressurant connection) and its **outlet is on the bottom**. A **COPV** has a single outlet on the bottom, and a **fill & drain valve** a single connection point on the left (its other side is capped). Rotate 90° turns any block, ports included.
+* **Ports:** blocks take flow in on the left and send it out on the right. A tee's branch is on the bottom, and a 90° fitting's outlet is on the bottom. The **tank** is the exception: its **inlet is on the top** (fill or pressurant connection) and its **outlet is on the bottom**. A **COPV** has a single outlet on the bottom, and a **fill & drain valve** a single connection point on the left (its other side is capped). Rotate 90° and Flip turn or mirror any block, ports included.
 * **Move:** drag the body (multi-select with Ctrl-click or a rubber band).
 * **Toggle state:** click the centre zone of the block (the cursor becomes a pointing hand). Two-state blocks switch between their two states; the tank cycles Nominal → Maximum → Minimum pressure. **Tees, crosses, 90° fittings and fill & drain valves have no toggle**: fittings are always open, a fill & drain valve is always a dead end; none of them shows a state caption, a State menu or a state field.
-* **Right-click menu:** Properties…, State ▸ (pick any state directly), Rotate right 90° / Rotate left 90°, *Pump curves…* and *Find lowest RPM…* (pumps), *Size this orifice…* (orifices), *Show flow / pressure data here*, **Copy**, **Duplicate Block**, **Save Block…**, **Delete Block**. (Tees and 90° fittings have no State entry.)
+* **Right-click menu:** Properties…, State ▸ (pick any state directly), Rotate right 90° / Rotate left 90°, Flip horizontal / Flip vertical, *Icon size* ▸ Small / Medium / Large, *Pump curves…* and *Find lowest RPM…* (pumps), *Size this orifice…* (orifices), *Show flow / pressure data here*, **Copy**, **Duplicate Block**, **Save Block…**, **Delete Block**. (Tees and 90° fittings have no State entry.)
 * **Double-click** the body to open Properties. Calculated values appear read-only at the bottom of the dialog.
 * **Pump speed on the block:** when a pump is ON, its speed (rpm) appears in an editable box on the block. Click it, type a value and press Enter. The pump's flow then comes from its imported curves at that speed.
 * **Save Block** writes the block's type, properties, state, orientation and pump curves to `Component Blocks/<name>.json`. It then appears under *Saved blocks* in the left column.
@@ -88,7 +90,7 @@ The interface uses a dark sci-fi console style taken from the user's reference s
   * Pasted blocks and lines get new identifiers, keep their properties, states, orientation and pump curves, and are selected so they can be dragged as a group.
   * The copy is also put on the system clipboard, so it can be pasted into a second window of the program.
   * While a text field (including the pump's flowrate box on the block) has the keyboard, these keys act on the text instead.
-* **Keyboard:** Ctrl+Z undoes and Ctrl+Y (or Ctrl+Shift+Z) redoes; Delete removes the selection; Ctrl+C copies, Ctrl+V / Ctrl+P pastes, Ctrl+D duplicates the selection (blocks plus the lines between them) in one step; R rotates right and Shift+R rotates left; D shows/hides the flow and pressure data; S selects, L draws lines, Esc cancels or clears.
+* **Keyboard:** Ctrl+Z undoes and Ctrl+Y (or Ctrl+Shift+Z) redoes; Delete removes the selection; Ctrl+C copies, Ctrl+V / Ctrl+P pastes, Ctrl+D duplicates the selection (blocks plus the lines between them) in one step; R rotates right and Shift+R rotates left; H flips horizontally and V vertically; D shows/hides the flow and pressure data; S selects, L draws lines, Esc cancels or clears.
 
 ### 2.2a Assemblies (saved groups of parts)
 An **assembly** is a group of connected parts, fittings and the tubes between them that is kept, moved and saved as one block, e.g. a filter + latch valve feed module or a thruster with its flowmeter.
@@ -130,7 +132,14 @@ Blocks added after a scenario was saved keep their current values when it is app
 
 ### 2.5 Files
 * *File → Save / Open* writes or reads a schematic as JSON (`*.pylon.json`; older `*.prop.json` files still open). See §6.
-* *File → Export image (PNG)…* renders the whole schematic at 2× resolution.
+* *File → Export image (PNG)…* renders the whole schematic at 2× resolution, as it looks on screen.
+* *File → Export line drawing (black and white)…* (Ctrl+Shift+P) exports a clean black-on-white drawing of the whole schematic for reports and reviews.
+  * Symbols and tubes are drawn as thin black lines on white, with junction dots where lines tap into lines.
+  * Nothing from the console look is included: no grid, colours, glow, tank fill, thruster plume, port rings, selection, warning badges or assembly outlines.
+  * Options: component names (on), component states (Open, Closed, ON · 3000 rpm …), flow and pressure data, and flow-direction arrows (all off by default).
+  * The file type follows the extension: **SVG** or **PDF** for scalable vector drawings (the PDF page is sized to the schematic), or **PNG** at 3× (about 300 dpi, capped at 12 000 px).
+
+  ![Line drawing of the example schematic](images/pylon_line_drawing.png)
 * *File → Open example* reloads the built-in example.
 
 ### 2.6 Error log and error reports
@@ -183,6 +192,7 @@ Notes
 * **Pump ON always follows its imported RPM curves** (since v1.9; the earlier fixed-flowrate mode was removed because it forced the set flow through whatever pressure that took, which drove the outlet pressure far too high whenever the downstream restriction did not match). The flow comes from the curve for the set speed as a function of the pump ΔP, so the outlet pressure settles where the pump curve meets the system. The flowrate is a calculated result, shown on the block's result plate and in Properties.
 * **Pump ON with no curves** is solved as stopped (the stopped-state orifice) and flagged with a warning badge: import curves with right-click → *Pump curves…*.
 * **Tubing size** fields accept a standard size from the list (OD × wall, inches) or a custom `OD x wall` string such as `5/16" x 0.035"`.
+* **Footprints (Medium icon size):** in-line components are 80 px between ports (orifice 60, thruster 50 from the inlet to the centre), so the tube stubs from a symbol to its ports are about 20 px. Tee, cross and 90° fitting arms are 20 px (40 × 40 fittings). The tank's top and bottom stubs are 30 px (200 × 340 footprint), the COPV's 5 px, and the transducer's 21 px. Since v1.18 these are half their earlier lengths; lines in older files that no longer meet their ports are re-routed when the file is opened.
 * **Tee orientation:** run = inlet ↔ outlet, branch = bottom port. **Cross:** run = inlet ↔ outlet, branches = top and bottom ports. A cross has ports on all four edges, so its name sits at the upper left and its results at the upper right. **90° fitting:** inlet on the left, outlet on the bottom (rotate as needed).
 
 ## 4. Physics and numerical method
@@ -309,6 +319,8 @@ For an orifice in parallel with the pump (one side on the pump-outlet manifold, 
 * that an open fluid coupling in series with a thruster passes the series equivalent-orifice flow;
 * that a fill & drain valve on a tank outlet passes no flow and reads the tank pressure, and that a line attached to a v1.15 fill & drain valve outlet is freed on load;
 * that copy names increment the last number (with zero padding), add " 1" when there is none, and skip names in use;
+* that every port of every block type sits on the 10 px grid and on its box edge at all three icon sizes (latch valve outlet 30 / 40 / 60 px; tee arm 20 px);
+* that flips mirror the ports across the screen axes at every rotation, undo themselves, and that horizontal then vertical equals a 180° rotation;
 * that an error report contains every section, the warnings by component name, and a schematic that reloads exactly;
 * that a pump at a speed between two stored curves interpolates correctly (3500 rpm between 3000 and 4000 rpm gear-pump curves gives 396 mL/min at 200 psid), and that a speed outside the stored curves is reported.
 
@@ -325,7 +337,7 @@ For an orifice in parallel with the pump (one side on the pump-outlet manifold, 
               "bend_laminar_coefficient": 800.0, "size_mismatch_tolerance": 0.02,
               "acceptance_tolerance_percent": 2.0},
  "blocks": [{"identifier": "p1", "type": "pump", "name": "P-1", "x": 1100, "y": 300, "orientation": 0,
-             "state": 0, "properties": {"revolutions_per_minute": 3000.0, "...": "..."},
+             "mirrored": false, "icon_size": "medium", "state": 0, "properties": {"revolutions_per_minute": 3000.0, "...": "..."},
              "pump_curves": {"3000": [[0, 360.0], [100, 348.0]]}}],
  "lines": [{"identifier": "l10", "name": "L10", "points": [[740, 190], [740, 300]], "auto_routed": true,
             "start": {"kind": "port", "block": "pt1", "port": "inlet"},
@@ -347,7 +359,9 @@ For an orifice in parallel with the pump (one side on the pump-outlet manifold, 
 * **Older files open automatically.** Version 1 and 2 files (format `propschematic`, abbreviated keys such as `props`, `rho`, `p_max`, `eseod`, `od`, ports `in`/`out`, attachment `t`) are converted to version 3 on load by `upgrade_model()`, and are written back as version 3 when saved.
 * When a file is opened and a line's end no longer sits on its port (e.g. a version 1 file whose tank outlet was on the right side), that line is re-routed automatically to the port's current position.
 
-**Saved block (`Component Blocks/<name>.json`):** `{"format": "pylon_block", "version": 3, "name", "type", "state", "orientation", "properties", "pump_curves"}`. Saved blocks from earlier versions (`props`, `curves`, `orient`) are upgraded by `upgrade_block_template()` when the column is loaded.
+* `mirrored` (flipped left-right in the block's own frame, applied before `orientation`) and `icon_size` (`small` / `medium` / `large`) are optional; files without them load as unmirrored, medium.
+
+**Saved block (`Component Blocks/<name>.json`):** `{"format": "pylon_block", "version": 3, "name", "type", "state", "orientation", "mirrored", "icon_size", "properties", "pump_curves"}`. Saved blocks from earlier versions (`props`, `curves`, `orient`) are upgraded by `upgrade_block_template()` when the column is loaded.
 
 **Saved assembly (`Component Blocks/<name>.json`):** `{"format": "pylon_assembly", "version": 3, "name", "blocks", "lines", "assemblies": {"assembly": {"name", "locked": true}}}`. `blocks` and `lines` are in the clipboard form (every member has `"assembly": "assembly"`); placing it maps them to new identifiers and names, like a paste.
 
@@ -500,11 +514,14 @@ LAYOUT
   "Warnings": solver status; thruster flow vs nominal; thrust; the balance
   pump flow = thruster flow + orifice flow; a table of every block and line section with P in, P out,
   ΔP, mass flow and notes; a warnings list; double-click selects the item) and Scenarios.
-- Menus/toolbar: File (New, Open, Open example, Save, Save As, Export PNG, Quit);
+- Menus/toolbar: File (New, Open, Open example, Save, Save As, Export PNG, Export line drawing
+  Ctrl+Shift+P, Quit);
   Edit (Undo Ctrl+Z, Redo Ctrl+Y / Ctrl+Shift+Z, Select/Move S, Draw Line L, Delete, Copy Ctrl+C,
-  Paste Ctrl+V and Ctrl+P, Duplicate selection Ctrl+D, Rotate left Shift+R, Rotate right R, Select all);
+  Paste Ctrl+V and Ctrl+P, Duplicate selection Ctrl+D, Rotate left Shift+R, Rotate right R, ⇋ Flip horizontal H, ⇵ Flip
+  vertical V, Icon size ▸ Small/Medium/Large, Select all);
   View (fit, zoom, Show flow / pressure data D, docks);
-  Toolbar: Undo, Redo | Select/Move, Draw Line, ⟲ Rotate left, Rotate right ⟳ | Show flow / pressure
+  Toolbar: Undo, Redo | Select/Move, Draw Line, ⟲ Rotate left, Rotate right ⟳, ⇋ Flip horizontal,
+  ⇵ Flip vertical | Show flow / pressure
   data (checkable) | Solve, Auto-solve, Fit | Fluid…, Size Orifice…, Lowest RPM…;
   Analysis (Solve F5, Auto-solve toggle, Size bypass orifice…, Find lowest pump RPM…,
   Fluid and loss coefficients…); Help (Quick guide F1, Generate error report… Ctrl+Shift+E, Open log
@@ -518,8 +535,25 @@ LAYOUT
 BLOCKS
 Each block has a symbol, a name label, a state caption and a results label. Ports:
 inlet on the left edge and outlet on the right edge; Tee branch and 90° fitting outlet on the bottom;
-the Tank alone has its inlet on top and its outlet on the bottom. Blocks rotate in 90° steps (ports
-and symbol rotate; text stays upright).
+the Tank alone has its inlet on top and its outlet on the bottom. Blocks rotate in 90° steps and flip
+(ports and symbol rotate/mirror; text stays upright).
+- Geometry: block_geometry(type, icon_size) scales BLOCK_TYPES size, ports and symbol_extent by
+  Small 0.75 / Medium 1 / Large 1.5; half sizes and port offsets round to the 10 px grid and edge ports
+  stay on the box edge. Pose = (orientation, mirrored): local x is negated first if mirrored, then
+  rotated (orient_vector). flipped_pose(orientation, mirrored, 'horizontal'|'vertical') multiplies the
+  pose matrix by the screen mirror and decomposes it back. BlockItem.paint_symbol: rotate, mirror,
+  scale, then draw_symbol(type, state, colour, size = box / scale, orientation, mirrored, monochrome);
+  draw_letters counter-rotates and un-mirrors so FM / PT read upright. Toggle zone = the symbol
+  extent + 4 px (tank: middle of the box).
+- Medium footprints (stubs and fitting arms half the v1.17 length): latch valve 80x100, fluid
+  coupling 80x90, fill & drain valve 80x90 (port -40), filter 80x110, flowmeter 80x100, pump 80x120,
+  thruster 100x110 (port -50), orifice 60x110 (ports ±30), transducer 80x60 (port 0,30), COPV 100x120
+  (port 0,60), tank 200x340 (ports 0,±170; capsule -88,-140,176,280), tee / cross / 90° fitting
+  40x40 (arms 20).
+- Flip: scene.flip_block(block, axis) (toolbar, Edit, block menu; H / V); scene.set_icon_size(blocks,
+  size) (block menu Icon size ▸, Edit ▸ Icon size). Both re-layout ports and re-route attached lines,
+  and are refused with a status message for parts of a locked assembly. Saved per block as
+  "mirrored" and "icon_size" (schematic, saved blocks, clipboard, assemblies; undo/redo).
 - Label layout (label_layout): every block type has symbol_extent = how far its symbol reaches
   up/down/left/right (rotated with the block). Labels go just outside that reach, inside the block's
   box, on sides without ports, 3 px apart:
@@ -531,15 +565,13 @@ and symbol rotate; text stays upright).
     results left-aligned right of it;
   - one side band free: name and results stacked in it; no side free (cross): name upper-left,
     results upper-right;
-  - tank: name, state caption and results stacked inside the capsule (y -62, -14, +34).
-  Footprints sized so the stack fits: latch valve 120x100, flowmeter 120x100, filter, orifice and
-  thruster 120x110, pump 120x120; side ports unchanged.
+  - tank: name, state caption and results stacked inside the capsule (y -42, -6, +54, × icon scale).
 - Clicking the centre zone toggles the state. Tees, crosses and 90° fittings have a single "Open" state and no
   toggle (no click toggle, no state caption, no State menu or field); stored states are clamped with
   normalized_state(), so older files with a tee/fitting OFF load as open. has_toggle(type) is true
   when a type has more than one state.
 - Right-click menu: Properties…, State submenu (toggleable types only), Rotate right 90°, Rotate left
-  90°, Show flow / pressure data here (checkable), Pump curves… / Find lowest RPM… (pump), Size this
+  90°, Flip horizontal, Flip vertical, Icon size ▸ Small/Medium/Large (checked = current), Show flow / pressure data here (checkable), Pump curves… / Find lowest RPM… (pump), Size this
   orifice… (orifice), Copy, Duplicate Block, Save Block…, Delete Block.
 - Rotation: orientation += 90° (right, clockwise on screen) or -90° (left) for every selected block;
   attached lines follow and re-route.
@@ -568,7 +600,7 @@ and symbol rotate; text stays upright).
   (Duplicate) copies and pastes the selection without touching the clipboard. Copy/paste keys are
   ignored while a text field or the pump flow box has the keyboard.
 - Double-click opens Properties: editable fields plus read-only calculated values.
-- Save Block writes {format: pylon_block, version: 3, name, type, state, orientation, properties,
+- Save Block writes {format: pylon_block, version: 3, name, type, state, orientation, mirrored, icon_size, properties,
   pump_curves} JSON to the folder.
 - Blocks with warnings get a red border, a "!" badge and tooltip text.
 - Assemblies: scene.assemblies = {identifier: {name, locked}}; each block/line has assembly_identifier.
@@ -587,12 +619,12 @@ and symbol rotate; text stays upright).
   undo/redo; no effect on the physics.
 Types (editable properties; [states]; calculated). Code keys are the full names given in the
 Components table of the user guide (e.g. open_orifice_diameter, flow_coefficient, maximum_pressure).
-- Tank: 200x400 footprint (4x the earlier tank); 176x280 vertical capsule with a fill level per state,
+- Tank: 200x340 footprint; 176x280 vertical capsule with a fill level per state,
   brass tube stubs from the capsule to the inlet port on the TOP edge and the outlet port on the
   BOTTOM edge, state and pressure written inside; volume L, max/nominal/min pressure psia, inlet tubing size, outlet tubing size;
   [Nominal pressure, Maximum pressure, Minimum pressure]; pressure, inflow through the top inlet,
   net outflow, time to empty.
-- COPV: 100x140, single outlet port on the bottom edge; volume L, bottle pressure, maximum pressure
+- COPV: 100x120, single outlet port on the bottom edge; volume L, bottle pressure, maximum pressure
   (MEOP), ullage pressure setpoint (0 = unregulated), outlet tubing; [Backfilling, Isolated]; delivered
   ullage pressure, tanks backfilled, ullage backfill volume flow mL/min. Symbol: vertical capsule with
   diagonal overwrap hatching clipped to the bottle and a pipe to the outlet. Label "ullage X psia → N
@@ -601,7 +633,7 @@ Components table of the user guide (e.g. open_orifice_diameter, flow_coefficient
 - Fluid Coupling: ESEOD (open, flow restriction) 0.125 in, Cd, Cv, in/out tubing, max pressure;
   [Open, Closed]; pressures, ΔP, flow. Symbol: two coupling halves mated (open) or apart with sealed
   faces (closed).
-- Fill & Drain Valve: 120x90, ONE port (inlet, left edge); tubing size, max pressure; single state
+- Fill & Drain Valve: 80x90, ONE port (inlet, left edge); tubing size, max pressure; single state
   "Closed (dead end)", no toggle; pressure at the valve. Symbol: lead line from the port, filled
   bow-tie valve with a T handle, short stub and a thick cap bar on the right (service side). Label
   "dead end · X psia". On load/paste, detach_missing_ports() frees any line end attached to a port
@@ -623,7 +655,7 @@ Components table of the user guide (e.g. open_orifice_diameter, flow_coefficient
   nominal inlet pressure.
 - Orifice: diameter, in/out tubing; Cd fixed 0.6; [ON, OFF=plugged]; Cv, pressures, ΔP, flow.
 - Tee: in, out, branch tube sizes; [Open] only, no toggle; centre pressure, flow at each port.
-- Cross: 80x80, ports inlet (left), outlet (right), upper_branch (top), lower_branch (bottom); in, out,
+- Cross: 40x40, ports inlet (left), outlet (right), upper_branch (top), lower_branch (bottom); in, out,
   upper branch, lower branch tube sizes; [Open] only, no toggle; centre pressure, flow at each port.
   Symbol: full horizontal and vertical bars with a centre dot. Physics: four arms to a centre node
   using the tee coefficients (arms 10/10 f_T on the run, 50 f_T per branch; laminar 100/100, 400).
@@ -738,6 +770,15 @@ FILES
   upgrade_block_template() does the same for saved blocks. On load, any line whose end is not on its
   port's current position is re-routed (older files).
 - File > Export PNG.
+- File > Export line drawing… (LineDrawingDialog: names on; states, flow / pressure data, flow arrows
+  off): scene.line_drawing = options while rendering; ports, the pump speed box, assembly outlines and
+  the draw preview are hidden, name / data labels shown per option, and restored afterwards. In that
+  mode drawBackground fills white; blocks draw draw_symbol(monochrome=True) (black strokes, white
+  interiors, no tinted fills, tank fill or thruster plume; pipe stubs a single black line; fittings
+  2.5 px) and optionally the state caption; lines draw one 2 px black path, junction dots and optional
+  small black arrows; labels draw plain black text. Bounds = blocks, lines and visible labels + 20 px.
+  .svg via QSvgGenerator, .pdf via QPdfWriter with a page sized to the drawing, .png at 3× (max
+  12000 px); other extensions get .svg.
 - --selftest runs the physics, network and routing checks without importing PySide6.
 - Saving a block creates the Component Blocks folder on first use; the Logs folder is created at
   start-up.
@@ -800,3 +841,4 @@ CODE CONVENTIONS
 | 1.15 | 2026-10-13 | New blocks: **COPV** (pressurant bottle; while backfilling it holds a connected tank's ullage at its regulated setpoint or bottle pressure, through open lines and components), **Fluid Coupling** (open with an equivalent-orifice flow restriction, or closed) and **Fill & Drain Valve** (symbolic; each side is a dead end). **Assemblies:** save a selection of connected parts and their tubes as a named group, lock it to move and select it as one block or unlock it to modify the parts, save it to the library and place copies. Self-test checks added. |
 | 1.16 | 2026-10-13 | Fill & drain valve has a single connection point (left), drawn with a cap on its service side; it reads the pressure where it is connected. Lines attached to the old outlet port are freed when a file is opened or pasted, and the outlet tubing size is dropped. Self-test checks updated. |
 | 1.17 | 2026-10-13 | Error log: errors and warnings go to `Logs/pylon.log` (rotating). Component and solver warnings are logged when they appear and clear; Qt and Python warnings, file and import failures, and unhandled errors with tracebacks are logged too. An unhandled error opens an error dialog, and hard crashes go to `Logs/crash.log`. *Help → Generate error report…* saves a text report with the environment, errors, current warnings, recent log and, optionally, the schematic. `--debug` logs every solve. Self-test check added. |
+| 1.18 | 2026-10-13 | **Flip horizontal / vertical** (toolbar, Edit, block menu; H / V): mirrors blocks on screen at any rotation, with their ports; lettering stays upright. **Icon size** Small / Medium / Large per block (0.75× / 1× / 1.5×), saved with the block in schematics, saved blocks, copies and assemblies. **Export line drawing (black and white)** as SVG, PDF or PNG, with optional names, states, data and flow arrows. Tube stubs on every component and the arms of tees, crosses and 90° fittings are half as long (40 × 40 fittings, 80 px in-line components); lines in older files re-route to the moved ports on open. Self-test checks added. |
