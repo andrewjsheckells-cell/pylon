@@ -5,3 +5,4 @@ venv/
 .DS_Store
 Thumbs.db
 Logs/
+pylon_settings.json

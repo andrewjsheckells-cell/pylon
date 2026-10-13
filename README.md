@@ -46,7 +46,7 @@ Every equation in the code carries a citation comment; the full reference list i
 
 ```bash
 pip install -r requirements.txt        # PySide6 and numpy
-python pylon.py                        # opens the built-in example system
+python pylon.py                        # reopens your last schematic (the built-in example the first time)
 python pylon.py my_system.pylon.json   # open a saved schematic
 python pylon.py --selftest             # physics and solver checks, no GUI needed
 python pylon.py --debug                # also log every solve to Logs/pylon.log
@@ -71,4 +71,4 @@ Python 3.9 or newer is required. To try the pump-curve import, right-click a pum
 
 ## Status
 
-Version 1.20. The solver passes its built-in self-test (`--selftest`), which covers closed-form orifice flow, Hagen–Poiseuille, Colebrook, the Cv relation, mass balances, orifice sizing, pump-curve interpolation and file upgrades. Verify the loss-coefficient defaults against your own hardware data before relying on results for design decisions.
+Version 1.21. The solver passes its built-in self-test (`--selftest`), which covers closed-form orifice flow, Hagen–Poiseuille, Colebrook, the Cv relation, mass balances, orifice sizing, pump-curve interpolation and file upgrades. Verify the loss-coefficient defaults against your own hardware data before relying on results for design decisions.

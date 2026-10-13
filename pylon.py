@@ -92,7 +92,7 @@ import uuid
 import numpy
 
 APPLICATION_NAME = "Pylon"
-APPLICATION_VERSION = "1.20"
+APPLICATION_VERSION = "1.21"
 FILE_FORMAT_VERSION = 3
 
 # Program log (errors and warnings).  Silent until the GUI attaches its handlers (see ErrorLog).
@@ -7252,6 +7252,64 @@ schematic) to send with a problem; Help → Open log folder shows the logs.</p>
 """
 
 
+# =============================================================================
+# Recent schematics (reopened at start-up)
+# =============================================================================
+RECENT_SCHEMATIC_LIMIT = 10
+
+
+def settings_file_candidates():
+    """pylon_settings.json next to the script, else ~/.pylon/settings.json."""
+    return [os.path.join(SCRIPT_DIRECTORY, 'pylon_settings.json'),
+            os.path.join(os.path.expanduser('~'), '.pylon', 'settings.json')]
+
+
+def load_user_settings():
+    for path in settings_file_candidates():
+        try:
+            with open(path, encoding='utf-8') as file_handle:
+                settings = json.load(file_handle)
+            if isinstance(settings, dict):
+                return settings
+        except (OSError, ValueError):
+            continue
+    return {}
+
+
+def save_user_settings(settings):
+    for path in settings_file_candidates():
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, 'w', encoding='utf-8') as file_handle:
+                json.dump(settings, file_handle, indent=1)
+            return path
+        except OSError:
+            continue
+    LOGGER.warning("Could not save the recent-file list (no writable settings location)")
+    return None
+
+
+def recent_schematic_files():
+    """Recently opened or saved schematics, newest first, that still exist."""
+    recent = load_user_settings().get('recent_schematics') or []
+    return [path for path in recent if isinstance(path, str) and os.path.isfile(path)]
+
+
+def remember_recent_schematic(path):
+    path = os.path.abspath(path)
+    settings = load_user_settings()
+    recent = [entry for entry in (settings.get('recent_schematics') or [])
+              if isinstance(entry, str) and os.path.normcase(os.path.abspath(entry)) != os.path.normcase(path)]
+    settings['recent_schematics'] = [path] + recent[:RECENT_SCHEMATIC_LIMIT - 1]
+    save_user_settings(settings)
+
+
+def forget_recent_schematics():
+    settings = load_user_settings()
+    settings['recent_schematics'] = []
+    save_user_settings(settings)
+
+
 class LineDrawingDialog(BezelDialog):
     """Options for File → Export line drawing…"""
 
@@ -7340,9 +7398,10 @@ class MainWindow(QMainWindow):
         results_dock.raise_()
         self.resizeDocks([results_dock], [520], Qt.Orientation.Horizontal)
         self._build_actions(results_dock, scenario_dock)
-        if path:
-            self.open_file(path)
-        else:
+        # start with the file given on the command line, else the most recently opened or saved
+        # schematic, else the built-in example
+        last_path = None if path else next(iter(recent_schematic_files()), None)
+        if not (path or last_path) or not self.open_file(path or last_path, quiet=bool(last_path)):
             self.load_model(build_example_model(), None)
         QTimer.singleShot(0, self.view.fit_all)
 
@@ -7363,6 +7422,8 @@ class MainWindow(QMainWindow):
         file_menu = menu_bar.addMenu("&File")
         file_menu.addAction(self._make_action("New", self.new_file, "Ctrl+N"))
         file_menu.addAction(self._make_action("Open…", self.open_dialog, "Ctrl+O"))
+        self.recent_menu = file_menu.addMenu("Open recent")
+        self.recent_menu.aboutToShow.connect(self._fill_recent_menu)
         file_menu.addAction(self._make_action("Open example", lambda: self._confirm_discard() and
                                               self.load_model(build_example_model(), None)))
         file_menu.addAction(self._make_action("Save", self.save, "Ctrl+S"))
@@ -7972,21 +8033,45 @@ class MainWindow(QMainWindow):
     def open_dialog(self):
         if not self._confirm_discard():
             return
-        path, _ = QFileDialog.getOpenFileName(self, "Open schematic", SCRIPT_DIRECTORY,
+        recent = recent_schematic_files()
+        start_directory = os.path.dirname(recent[0]) if recent else SCRIPT_DIRECTORY
+        path, _ = QFileDialog.getOpenFileName(self, "Open schematic", start_directory,
                                               "Pylon schematic (*.pylon.json *.prop.json *.json);;All files (*)")
         if path:
             self.open_file(path)
 
-    def open_file(self, path):
+    def open_file(self, path, quiet=False):
+        """Open a schematic; True on success.  `quiet` (start-up) logs a failure instead of
+        showing a message box, so a moved or deleted last file just falls back to the example."""
         try:
             with open(path, encoding='utf-8') as file_handle:
                 model = json.load(file_handle)
+            if not isinstance(model, dict):
+                raise ValueError("not a Pylon schematic")
         except (OSError, ValueError) as error:
-            ERROR_LOG.record_error(f"Could not open {path}: {error}")
-            QMessageBox.warning(self, "Open", f"Could not open {path}:\n{error}")
-            return
+            if quiet:
+                LOGGER.warning("Could not reopen the last schematic %s: %s", path, error)
+            else:
+                ERROR_LOG.record_error(f"Could not open {path}: {error}")
+                QMessageBox.warning(self, "Open", f"Could not open {path}:\n{error}")
+            return False
         LOGGER.info("Opened %s", path)
         self.load_model(model, path)
+        remember_recent_schematic(path)
+        return True
+
+    def _fill_recent_menu(self):
+        self.recent_menu.clear()
+        recent = recent_schematic_files()
+        for recent_path in recent:
+            self.recent_menu.addAction(os.path.basename(recent_path),
+                                       lambda checked=False, recent_path=recent_path:
+                                       self._confirm_discard() and self.open_file(recent_path)).setToolTip(recent_path)
+        if not recent:
+            self.recent_menu.addAction("(none)").setEnabled(False)
+        else:
+            self.recent_menu.addSeparator()
+            self.recent_menu.addAction("Clear list", lambda: forget_recent_schematics())
 
     def save(self):
         if not self.file_path:
@@ -7999,6 +8084,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Save", str(error))
             return False
         LOGGER.info("Saved %s", self.file_path)
+        remember_recent_schematic(self.file_path)
         self.set_modified(False)
         self.statusBar().showMessage(f"Saved {self.file_path}", 5000)
         return True

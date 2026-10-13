@@ -6,11 +6,12 @@ A PySide6 desktop tool for drawing a spacecraft liquid-propulsion feed-system sc
 
 | | |
 |---|---|
-| Program | `pylon.py` (single file, version 1.20) |
+| Program | `pylon.py` (single file, version 1.21) |
 | Requires | Python ≥ 3.9, `PySide6`, `numpy` |
 | Run | `pip install PySide6 numpy` then `python pylon.py [schematic.pylon.json]` |
 | Solver self-test (no GUI) | `python pylon.py --selftest` |
 | Saved blocks | `Component Blocks/` folder next to the script (created on first save) |
+| Start-up | Reopens the most recent schematic (`pylon_settings.json` keeps the recent list); the built-in example if there is none |
 | Error log | `Logs/pylon.log` next to the script (or `~/.pylon/Logs/` if that folder can't be written); `python pylon.py --debug` also logs every solve |
 | Example data | `examples/example_pump_curves.csv` (synthetic gear-pump curves for the import test) |
 | Repository | <https://github.com/andrewjsheckells-cell/pylon> · project page <https://andrewjsheckells-cell.github.io/pylon/> |
@@ -131,6 +132,9 @@ A scenario is a saved snapshot of **every block's toggle state and every editabl
 Blocks added after a scenario was saved keep their current values when it is applied. Pump curves belong to the block, not to the scenario. Scenarios are saved in the schematic file.
 
 ### 2.5 Files
+* **At start-up Pylon reopens the most recently opened or saved schematic.** If that file has been moved or deleted, it opens the next most recent one that still exists. If the newest file can't be read, or there is no recent file, it opens the built-in example. A file named on the command line (`python pylon.py my_system.pylon.json`) is opened instead.
+* *File → Open recent* lists the last 10 schematics opened or saved (hover for the full path), plus *Clear list*. *File → Open…* starts in the folder of the most recent schematic.
+* The list is kept in `pylon_settings.json` next to `pylon.py` (or `~/.pylon/settings.json` if that folder can't be written).
 * *File → Save / Open* writes or reads a schematic as JSON (`*.pylon.json`; older `*.prop.json` files still open). See §6.
 * *File → Export image (PNG)…* renders the whole schematic at 2× resolution, as it looks on screen.
 * *File → Export line drawing (black and white)…* (Ctrl+Shift+P) exports a clean black-on-white drawing of the whole schematic for reports and reviews.
@@ -528,7 +532,13 @@ LAYOUT
   Analysis (Solve F5, Auto-solve toggle, Size bypass orifice…, Find lowest pump RPM…,
   Fluid and loss coefficients…); Help (Quick guide F1, Generate error report… Ctrl+Shift+E, Open log
   folder, About).
-- Starts with a built-in example: tank (above the line, bottom outlet) → filter → latch valve → tee → pump → tee → flowmeter →
+- Start-up: the file given on the command line, else the newest existing entry of
+  recent_schematics in pylon_settings.json (next to the script, else ~/.pylon/settings.json; up to
+  10, newest first, recorded on every successful open and save), else the built-in example. A
+  start-up file that can't be read is logged (no message box) and the example opens. File → Open
+  recent ▸ (filled on aboutToShow; tooltip = full path; Clear list); Open… starts in the newest
+  file's folder.
+- The built-in example (File → Open example): tank (above the line, bottom outlet) → filter → latch valve → tee → pump → tee → flowmeter →
   thruster, a bypass orifice from the pump-outlet tee branch back to the pump-inlet tee branch,
   transducers tapped onto the valve-outlet and pump-outlet lines, synthetic pump curves at
   2000–6000 rpm, and scenarios "Nominal", "Maximum tank pressure, clogged filter" and
@@ -854,3 +864,4 @@ CODE CONVENTIONS
 | 1.18 | 2026-10-13 | **Flip horizontal / vertical** (toolbar, Edit, block menu; H / V): mirrors blocks on screen at any rotation, with their ports; lettering stays upright. **Icon size** Small / Medium / Large per block (0.75× / 1× / 1.5×), saved with the block in schematics, saved blocks, copies and assemblies. **Export line drawing (black and white)** as SVG, PDF or PNG, with optional names, states, data and flow arrows. Tube stubs on every component and the arms of tees, crosses and 90° fittings are half as long (40 × 40 fittings, 80 px in-line components); lines in older files re-route to the moved ports on open. Self-test checks added. |
 | 1.19 | 2026-10-13 | From a user log: a running pump whose operating point is past the end of its curve data is now warned as extrapolated (a stiff curve extended past its data can give very high outlet pressures), and reversed pump flow is flagged. The log records a warning once while only its numbers change, instead of logging it again and "clearing" the old values on every solve. The version string now matches the release (1.18 still reported 1.17). Self-test checks added. |
 | 1.20 | 2026-10-13 | Tees, crosses and 90° fittings no longer show name or result labels on the canvas (including on hover and in line drawings); their flows are in the tooltip, Properties and the Results tab. |
+| 1.21 | 2026-10-13 | Pylon opens the most recently opened or saved schematic at start-up instead of the example (the example opens when there is none). *File → Open recent* lists the last 10 schematics; *Open…* starts in the last file's folder. |
