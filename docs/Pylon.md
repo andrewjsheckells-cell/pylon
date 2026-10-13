@@ -6,7 +6,7 @@ A PySide6 desktop tool for drawing a spacecraft liquid-propulsion feed-system sc
 
 | | |
 |---|---|
-| Program | `pylon.py` (single file, version 1.11) |
+| Program | `pylon.py` (single file, version 1.12) |
 | Requires | Python ≥ 3.9, `PySide6`, `numpy` |
 | Run | `pip install PySide6 numpy` then `python pylon.py [schematic.pylon.json]` |
 | Solver self-test (no GUI) | `python pylon.py --selftest` |
@@ -48,7 +48,7 @@ The interface uses a dark sci-fi console style taken from the user's reference s
 * **Not copied:** no logos, artwork, fonts or other game assets are included.
 
 ### 2.1 Layout
-* **Left: Component Blocks column.** Enclosed in a gold bezel frame and scrollable when it is taller than the window. *Starting blocks* (the ten built-in types) come first, then *Saved blocks* (every `.json` in `Component Blocks/`). Click an entry to add it near the centre of the view at a free spot, or drag it to a location. Right-click a saved block to delete it from the library.
+* **Left: Component Blocks column.** Enclosed in a gold bezel frame and scrollable when it is taller than the window. *Starting blocks* (the eleven built-in types) come first, then *Saved blocks* (every `.json` in `Component Blocks/`). Click an entry to add it near the centre of the view at a free spot, or drag it to a location. Right-click a saved block to delete it from the library.
 * **Centre: schematic canvas.** It has a 20 px dot grid; blocks snap to 10 px. Mouse wheel zooms, middle-drag pans, **F** fits all. Right-click empty canvas for *Add block here*, *Paste here*, *Auto-route all lines* and *Solve now*.
 * **Right: Results and Scenarios tabs** (tabs on top; each panel in its own bezel frame).
   * *Results:* a solver status line, total thruster flow vs nominal, thrust, and the pump balance (pump flow = thruster flow + orifice flow). Below that are a table of every block and line section and a list of warnings. Double-click a row or warning to select that item on the canvas.
@@ -72,7 +72,7 @@ The interface uses a dark sci-fi console style taken from the user's reference s
 ### 2.2 Blocks
 * **Ports:** blocks take flow in on the left and send it out on the right. A tee's branch is on the bottom, and a 90° fitting's outlet is on the bottom. The **tank** is the exception: its **inlet is on the top** (fill or pressurant connection) and its **outlet is on the bottom**. Rotate 90° turns any block, ports included.
 * **Move:** drag the body (multi-select with Ctrl-click or a rubber band).
-* **Toggle state:** click the centre zone of the block (the cursor becomes a pointing hand). Two-state blocks switch between their two states; the tank cycles Nominal → Maximum → Minimum pressure. **Tees and 90° fittings have no toggle**: they are always open, show no state caption, and have no State menu or state field.
+* **Toggle state:** click the centre zone of the block (the cursor becomes a pointing hand). Two-state blocks switch between their two states; the tank cycles Nominal → Maximum → Minimum pressure. **Tees, crosses and 90° fittings have no toggle**: they are always open, show no state caption, and have no State menu or state field.
 * **Right-click menu:** Properties…, State ▸ (pick any state directly), Rotate right 90° / Rotate left 90°, *Pump curves…* and *Find lowest RPM…* (pumps), *Size this orifice…* (orifices), *Show flow / pressure data here*, **Copy**, **Duplicate Block**, **Save Block…**, **Delete Block**. (Tees and 90° fittings have no State entry.)
 * **Double-click** the body to open Properties. Calculated values appear read-only at the bottom of the dialog.
 * **Pump speed on the block:** when a pump is ON, its speed (rpm) appears in an editable box on the block. Click it, type a value and press Enter. The pump's flow then comes from its imported curves at that speed.
@@ -131,6 +131,7 @@ Property names in the table are the labels shown in the Properties dialog; the `
 | Thruster | inlet | ON / OFF | Specific impulse [s] `specific_impulse`; Nominal inlet pressure [psia] `nominal_inlet_pressure`; Maximum inlet pressure [psia] `maximum_inlet_pressure`; Equivalent orifice diameter [in] `orifice_diameter`; Discharge coefficient; Flow coefficient Cv; Inlet tubing size | Outlet pressure (hard-coded 0 psia); Inlet pressure; Flowrate [g/s]; Thrust [N] `calculated_thrust`; Flowrate and thrust at nominal inlet pressure `calculated_nominal_mass_flow`, `calculated_nominal_thrust` |
 | Orifice | inlet, outlet | ON / OFF (plugged) | Orifice diameter [in] `orifice_diameter`; Inlet tubing size; Outlet tubing size | Discharge coefficient (fixed, 0.6); Cv; Inlet/outlet pressure; Pressure drop; Mass flow (inlet→outlet) |
 | Tee | inlet, outlet, branch | — (no toggle; always open) | Inlet tube size `inlet_tubing_size`; Outlet tube size `outlet_tubing_size`; Tee (branch) tube size `branch_tubing_size` | Centre pressure `calculated_center_pressure`; Flow at each port `calculated_inlet_flow`, `calculated_outlet_flow`, `calculated_branch_flow` |
+| Cross | inlet, outlet, upper branch (top), lower branch (bottom) | — (no toggle; always open) | Inlet tube size `inlet_tubing_size`; Outlet tube size `outlet_tubing_size`; Upper branch tube size `upper_branch_tubing_size`; Lower branch tube size `lower_branch_tubing_size` | Centre pressure `calculated_center_pressure`; Flow at each port `calculated_inlet_flow`, `calculated_outlet_flow`, `calculated_upper_branch_flow`, `calculated_lower_branch_flow` |
 | 90° Fitting (`elbow`) | inlet, outlet (bottom) | — (no toggle; always open) | Inlet tube size; Outlet tube size | Inlet/outlet pressure; Pressure drop; Mass flow |
 | Plumbing line | start, end (port, another line, or free) | — | Outer diameter [in] `outer_diameter`; Inner diameter [in] `inner_diameter`; Length [in] `length`; Number of 90° bends `bend_count`; Bend radius / diameter `bend_radius_ratio`; Absolute roughness [in] `roughness` | Mass flow (start→end) `calculated_mass_flow`; Pressure drop inlet→outlet `calculated_pressure_drop`; Velocity `calculated_velocity`; Reynolds number `calculated_reynolds_number` |
 
@@ -141,7 +142,7 @@ Notes
 * **Pump ON always follows its imported RPM curves** (since v1.9; the earlier fixed-flowrate mode was removed because it forced the set flow through whatever pressure that took, which drove the outlet pressure far too high whenever the downstream restriction did not match). The flow comes from the curve for the set speed as a function of the pump ΔP, so the outlet pressure settles where the pump curve meets the system. The flowrate is a calculated result, shown on the block's result plate and in Properties.
 * **Pump ON with no curves** is solved as stopped (the stopped-state orifice) and flagged with a warning badge: import curves with right-click → *Pump curves…*.
 * **Tubing size** fields accept a standard size from the list (OD × wall, inches) or a custom `OD x wall` string such as `5/16" x 0.035"`.
-* **Tee orientation:** run = inlet ↔ outlet, branch = bottom port. **90° fitting:** inlet on the left, outlet on the bottom (rotate as needed).
+* **Tee orientation:** run = inlet ↔ outlet, branch = bottom port. **Cross:** run = inlet ↔ outlet, branches = top and bottom ports. A cross has ports on all four edges, so its name sits at the upper left and its results at the upper right. **90° fitting:** inlet on the left, outlet on the bottom (rotate as needed).
 
 ## 4. Physics and numerical method
 
@@ -183,6 +184,7 @@ For a tube of inner diameter D, length L, area A, mass flow ṁ, velocity V = �
 | Thruster | Orifice from the inlet node to a fixed 0 psia boundary. Thrust F = ṁ·Isp·g₀ [SUTTON], g₀ = 9.80665 m/s² [NIST811]. Nominal flow = flow at the nominal inlet pressure. |
 | Tank | **Blowdown pressure source.** The tank is a fixed-pressure boundary at the pressure of the selected state (nominal / max / min, i.e. points on the blowdown curve), and that pressure is what pushes propellant from the tank to the pump inlet. The pump then sets the flow to everything downstream; with the pump OFF it is an orifice and tank pressure alone drives the flow through it. Bottom outlet: entrance loss K = 0.5 for outflow, exit K = 1.0 for back-flow, on the outlet-tube area. Top inlet: exit K = 1.0 for flow into the tank, entrance K = 0.5 for reverse flow, on the inlet-tube area. An unconnected top inlet carries no flow. |
 | Tee | Three arms meeting at a centre node. Crane through-run 20 f_T and through-branch 60 f_T are split so in + out = 20 f_T and in + branch = 60 f_T. Laminar K₁: run 200, branch 500. |
+| Cross | Four arms meeting at a centre node. Crane TP-410 gives no separate cross coefficient, so the cross uses the tee values: inlet and outlet arms 10 f_T each (run = 20 f_T), each branch arm 50 f_T (inlet + branch = 60 f_T); laminar K₁ likewise (run 200, branch 500). The tee settings in *Fluid and loss coefficients…* apply to crosses too. |
 | 90° fitting | Crane standard elbow K∞ = 30 f_T, laminar K₁ = 800, plus area change if inlet and outlet sizes differ |
 | Pressure transducer | Dead-end pressure tap: reads the node pressure where it is connected |
 | Pump ON | ṁ = ρ·Q(Δp_pump, N), with N the set speed: the operating point is where the pump curve meets the system curve; inlet pressure = tank pressure − upstream losses. At a stored RPM the curve is piecewise linear in Δp with linear extrapolation. **Between two stored RPMs** N_low < N < N_high it interpolates linearly in speed at the same Δp: Q = (1 − w)·Q_low(Δp) + w·Q_high(Δp), w = (N − N_low)/(N_high − N_low) (exact for a positive-displacement pump, Q = displacement·N − slip(Δp)). **Outside the stored range** it uses the nearest end curve and lists a warning. |
@@ -192,7 +194,7 @@ For a tube of inner diameter D, length L, area A, mass flow ṁ, velocity V = �
 * In the network it becomes the flow area `A = π·d²/4` in the orifice law `ṁ = Cd·A·√(2ρΔp)`, rearranged to `Δp = ṁ|ṁ| / (2ρ·Cd²·A²)` [SUTTON], [CRANE]. ρ is the working-fluid density.
 * The 29.84 constant is the US-unit form of that same law for water at 60 °F (Cv in gpm at 1 psi). Using it only for the Cv ↔ d conversion and the true density in the flow law keeps the two consistent for any liquid.
 * State-dependent diameters are separate inputs: valve open/closed (leak), filter clean/maximum trapped, and pump stopped.
-* Tubes, tees and 90° fittings have no ESEOD; they use Churchill friction and Crane/two-K loss coefficients (§4.2 and the table above).
+* Tubes, tees, crosses and 90° fittings have no ESEOD; they use Churchill friction and Crane/two-K loss coefficients (§4.2 and the table above).
 * The *Size bypass orifice* analysis (§4.5) is the one place a diameter is solved for: it finds the orifice diameter that balances pump flow against thruster demand.
 
 **About the loss-coefficient defaults.**
@@ -258,6 +260,7 @@ For an orifice in parallel with the pump (one side on the pump-outlet manifold, 
 * that the ideal-orifice search hits the nominal thruster flow;
 * that the A* route clears an obstacle;
 * that a version 2 file is upgraded to version 3 with every key renamed;
+* that a cross with identical loads on its outlet and both branches balances and splits the branch flows equally;
 * that a pump at a speed between two stored curves interpolates correctly (3500 rpm between 3000 and 4000 rpm gear-pump curves gives 396 mL/min at 200 psid), and that a speed outside the stored curves is reported.
 
 ## 6. File formats
@@ -298,7 +301,7 @@ For an orifice in parallel with the pump (one side on the pump-outlet manifold, 
 ## 7. Assumptions and limitations
 * Steady state only. No transients, water hammer, priming or tank blow-down; tank volume is used only for the time-to-empty estimate.
 * Single-phase incompressible liquid. A negative absolute pressure is flagged, but there is no cavitation or vapour-pressure model; use the pump min-inlet-pressure limit for NPSH margins.
-* Junctions between two line ends are ideal (no loss). Tees and 90° fittings carry the fitting losses; draw them as blocks where they matter.
+* Junctions between two line ends are ideal (no loss). Tees, crosses and 90° fittings carry the fitting losses; draw them as blocks where they matter.
 * Mismatched tube/port sizes are handled with contraction/expansion losses. Line-to-line size changes are not.
 * Unit system: pressures in psia/psid, lengths and diameters in inches, mass flow in g/s, pump curves in mL/min, thrust in N.
 
@@ -431,7 +434,7 @@ LOOK AND FEEL (dark sci-fi console style; no game assets, logos or fonts copied)
 
 LAYOUT
 - Left dock "Component Blocks": a bezel-framed, vertically scrolling column. "Starting blocks" lists the
-  ten built-in types with drawn symbols; "Saved blocks" lists every .json file in a "Component Blocks"
+  eleven built-in types with drawn symbols; "Saved blocks" lists every .json file in a "Component Blocks"
   folder next to the script. Clicking an entry adds that block at a free spot near the view centre;
   dragging it drops it at the cursor. Right-clicking a saved entry deletes the file.
 - Centre: QGraphicsView canvas with a 20 px dot grid; blocks snap to 10 px. Wheel zooms, middle-drag
@@ -462,7 +465,7 @@ inlet on the left edge and outlet on the right edge; Tee branch and 90° fitting
 the Tank alone has its inlet on top and its outlet on the bottom. When a port occupies the top or
 bottom edge, the name and results labels (and the rim gem) move to a free side (name left, results
 right). Blocks rotate in 90° steps (ports and symbol rotate; text stays upright).
-- Clicking the centre zone toggles the state. Tees and 90° fittings have a single "Open" state and no
+- Clicking the centre zone toggles the state. Tees, crosses and 90° fittings have a single "Open" state and no
   toggle (no click toggle, no state caption, no State menu or field); stored states are clamped with
   normalized_state(), so older files with a tee/fitting OFF load as open. has_toggle(type) is true
   when a type has more than one state.
@@ -520,6 +523,11 @@ Components table of the user guide (e.g. open_orifice_diameter, flow_coefficient
   nominal inlet pressure.
 - Orifice: diameter, in/out tubing; Cd fixed 0.6; [ON, OFF=plugged]; Cv, pressures, ΔP, flow.
 - Tee: in, out, branch tube sizes; [Open] only, no toggle; centre pressure, flow at each port.
+- Cross: 80x80, ports inlet (left), outlet (right), upper_branch (top), lower_branch (bottom); in, out,
+  upper branch, lower branch tube sizes; [Open] only, no toggle; centre pressure, flow at each port.
+  Symbol: full horizontal and vertical bars with a centre dot. Physics: four arms to a centre node
+  using the tee coefficients (arms 10/10 f_T on the run, 50 f_T per branch; laminar 100/100, 400).
+  With ports on all four edges, the name label goes upper-left and the results upper-right.
 - 90° Fitting: in/out tube sizes (outlet port at bottom); [Open] only, no toggle.
 ESEOD, Cd and Cv are linked by Cv = 29.84·Cd·d²(in): editing ESEOD or Cd updates Cv; editing Cv
 updates ESEOD. Tube sizes are chosen from standard OD × wall labels or typed as "OD x wall" inches.
@@ -654,3 +662,4 @@ CODE CONVENTIONS
 | 1.9 | 2026-10-01 | Pump is curve-only: the fixed-flowrate mode (and its ON-state model and flowrate inputs) was removed because it forced the set flow through any downstream restriction and drove the outlet pressure far too high. An ON pump follows its RPM curves (interpolated between speeds); with no curves it is solved as stopped and flagged on the block. The on-block box now edits the speed (rpm). Example bypass orifice re-sized to 0.00914 in for 3000 rpm. Older files and saved blocks drop the obsolete keys on load. |
 | 1.10 | 2026-10-13 | Pump icon changed to the gear-pump symbol (casing with two meshing spur gears) on the schematic and in the component column. |
 | 1.11 | 2026-10-13 | Pump icon changed to the user's gear-pump symbol: casing circle, two touching gear circles and a V pointing to the outlet to show the flow direction. |
+| 1.12 | 2026-10-13 | Cross fitting added: four ports (inlet, outlet, upper and lower branches), tube sizes per port, tee-based Crane/two-K arm losses, per-port flows; no toggle. Blocks with ports on all four edges place their name upper-left and results upper-right. Self-test check added. |

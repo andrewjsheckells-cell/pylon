@@ -83,7 +83,7 @@ import uuid
 import numpy
 
 APPLICATION_NAME = "Pylon"
-APPLICATION_VERSION = "1.11"
+APPLICATION_VERSION = "1.12"
 FILE_FORMAT_VERSION = 3
 
 # =============================================================================
@@ -466,6 +466,22 @@ BLOCK_TYPES = {
                     _calculated_property('calculated_outlet_flow', 'Flow out (outlet port)', 'g/s'),
                     _calculated_property('calculated_branch_flow', 'Flow out (branch port)', 'g/s')],
         flow_coefficient_links=[]),
+    'cross': dict(
+        # four-way fitting: run inlet -> outlet, branches up and down
+        label='Cross', prefix='X', size=(80, 80), color='#5d6d7e',
+        ports={'inlet': (-40, 0, -1, 0), 'outlet': (40, 0, 1, 0),
+               'upper_branch': (0, -40, 0, -1), 'lower_branch': (0, 40, 0, 1)},
+        states=['Open'],                       # fittings are always open: no toggle
+        properties=[_tube_property('inlet_tubing_size', 'Inlet tube size'),
+                    _tube_property('outlet_tubing_size', 'Outlet tube size'),
+                    _tube_property('upper_branch_tubing_size', 'Upper branch tube size'),
+                    _tube_property('lower_branch_tubing_size', 'Lower branch tube size'),
+                    _calculated_property('calculated_center_pressure', 'Centre pressure', 'psia'),
+                    _calculated_property('calculated_inlet_flow', 'Flow in (inlet port)', 'g/s'),
+                    _calculated_property('calculated_outlet_flow', 'Flow out (outlet port)', 'g/s'),
+                    _calculated_property('calculated_upper_branch_flow', 'Flow out (upper branch)', 'g/s'),
+                    _calculated_property('calculated_lower_branch_flow', 'Flow out (lower branch)', 'g/s')],
+        flow_coefficient_links=[]),
     'elbow': dict(
         label='90° Fitting', prefix='EL', size=(80, 80), color='#5d6d7e',
         ports={'inlet': (-40, 0, -1, 0), 'outlet': (0, 40, 0, 1)},
@@ -479,7 +495,7 @@ BLOCK_TYPES = {
         flow_coefficient_links=[]),
 }
 BLOCK_ORDER = ['tank', 'latch_valve', 'filter', 'flowmeter', 'transducer', 'pump',
-               'thruster', 'orifice', 'tee', 'elbow']
+               'thruster', 'orifice', 'tee', 'cross', 'elbow']
 
 PORT_TUBING_PROPERTY = {
     'tank': {'inlet': 'inlet_tubing_size', 'outlet': 'outlet_tubing_size'},
@@ -491,6 +507,8 @@ PORT_TUBING_PROPERTY = {
     'thruster': {'inlet': 'inlet_tubing_size'},
     'orifice': {'inlet': 'inlet_tubing_size', 'outlet': 'outlet_tubing_size'},
     'tee': {'inlet': 'inlet_tubing_size', 'outlet': 'outlet_tubing_size', 'branch': 'branch_tubing_size'},
+    'cross': {'inlet': 'inlet_tubing_size', 'outlet': 'outlet_tubing_size',
+              'upper_branch': 'upper_branch_tubing_size', 'lower_branch': 'lower_branch_tubing_size'},
     'elbow': {'inlet': 'inlet_tubing_size', 'outlet': 'outlet_tubing_size'},
 }
 
@@ -585,6 +603,7 @@ PROPERTY_RENAMES_BY_TYPE = {
                  'p_max': 'maximum_inlet_pressure', 'eseod': 'orifice_diameter'},
     'orifice': {'diameter': 'orifice_diameter'},
     'tee': {},
+    'cross': {},
     'elbow': {},
 }
 LINE_PROPERTY_RENAMES = {'od': 'outer_diameter', 'id': 'inner_diameter', 'bends': 'bend_count',
@@ -1158,6 +1177,30 @@ def build_network(model):
                             orifice_discharge_coefficient)
             else:
                 add_orifice(inlet_node, outlet_node, 0.0, 1.0)
+        elif block_type == 'cross':
+            # Four arms meeting at a centre node.  Crane TP-410 gives no separate cross value,
+            # so the cross uses the tee coefficients: flow-through-run 20 f_T split over the
+            # inlet and outlet arms, flow-through-branch 60 f_T for inlet arm + either branch
+            # arm   [CRANE]; laminar terms split the same way   [HOOPER].
+            center_node = f"{identifier}:center"
+            run_multiplier = settings['tee_run_friction_multiplier']
+            branch_multiplier = settings['tee_branch_friction_multiplier']
+            run_laminar = settings['tee_run_laminar_coefficient']
+            branch_laminar = settings['tee_branch_laminar_coefficient']
+            arms = [('inlet', inlet_node, center_node, 'inlet_tubing_size', run_multiplier / 2, run_laminar / 2),
+                    ('outlet', center_node, outlet_node, 'outlet_tubing_size', run_multiplier / 2, run_laminar / 2)]
+            for branch_name in ('upper_branch', 'lower_branch'):
+                arms.append((branch_name, center_node, f"{identifier}:{branch_name}", f"{branch_name}_tubing_size",
+                             branch_multiplier - run_multiplier / 2, branch_laminar - run_laminar / 2))
+            for arm_name, first_node, second_node, tubing_key, friction_multiplier, laminar_coefficient in arms:
+                arm_diameter = tube_inner_diameter_inches(properties.get(tubing_key, DEFAULT_TUBE)) * METERS_PER_INCH
+                # cross arm: K_turbulent = n * f_T                                           [CRANE]
+                # plus laminar term K_1 / Re (two-K method)                              [HOOPER]
+                pending_elements.append(('resistance', first_node, second_node, ('block', identifier, arm_name),
+                                         f"{identifier}#{arm_name}",
+                                         make_two_k_pressure_drop_function(
+                                             friction_multiplier * fully_turbulent_friction_factor(arm_diameter, settings),
+                                             laminar_coefficient, arm_diameter, density, viscosity)))
         elif block_type == 'tee':
             # Three arms meeting at a centre node.  Crane flow-through-run (20 f_T) and
             # flow-through-branch (60 f_T) are split so inlet+outlet arms = run and
@@ -1560,6 +1603,16 @@ def solve_model(model, initial_guess=None):
             block_result['label'] = (f"in {format_number(calculated['calculated_inlet_flow'], 3)} / out "
                                      f"{format_number(calculated['calculated_outlet_flow'], 3)} / branch "
                                      f"{format_number(calculated['calculated_branch_flow'], 3)} g/s")
+        elif block_type == 'cross':
+            calculated['calculated_center_pressure'] = psia_from_pascals(pressure_at(f"{identifier}:center"))
+            calculated['calculated_inlet_flow'] = mass_flow_of(f"{identifier}#inlet") / KILOGRAMS_PER_GRAM
+            calculated['calculated_outlet_flow'] = mass_flow_of(f"{identifier}#outlet") / KILOGRAMS_PER_GRAM
+            calculated['calculated_upper_branch_flow'] = mass_flow_of(f"{identifier}#upper_branch") / KILOGRAMS_PER_GRAM
+            calculated['calculated_lower_branch_flow'] = mass_flow_of(f"{identifier}#lower_branch") / KILOGRAMS_PER_GRAM
+            block_result['label'] = (f"in {format_number(calculated['calculated_inlet_flow'], 3)} / out "
+                                     f"{format_number(calculated['calculated_outlet_flow'], 3)} / up "
+                                     f"{format_number(calculated['calculated_upper_branch_flow'], 3)} / down "
+                                     f"{format_number(calculated['calculated_lower_branch_flow'], 3)} g/s")
         for port_name, port_pressure in block_result['ports'].items():
             if (not math.isnan(port_pressure) and port_pressure < -1.0
                     and identifier not in blocks_warned_for_negative_pressure):
@@ -2508,6 +2561,34 @@ def run_self_test():
     outside_ok = outside_note is not None
     print(f"  [{'PASS' if outside_ok else 'FAIL'}] speed outside the stored curves is reported")
     all_passed &= outside_ok
+
+    print("Cross fitting")
+    # tank -> cross inlet; identical thrusters on the outlet and both branches: the three
+    # branches through the branch arms must carry equal flow and the cross must balance
+    cross_model = {'fluid': dict(DEFAULT_FLUID), 'settings': {},
+                   'blocks': [{'identifier': 'tank', 'type': 'tank', 'state': 0,
+                               'properties': dict(default_block_properties('tank'), nominal_pressure=300.0)},
+                              {'identifier': 'cross', 'type': 'cross', 'state': 0,
+                               'properties': default_block_properties('cross')}]
+                   + [{'identifier': name, 'type': 'thruster', 'state': 0,
+                       'properties': dict(default_block_properties('thruster'), inlet_tubing_size=DEFAULT_TUBE)}
+                      for name in ('east', 'north', 'south')],
+                   'lines': []}
+    for line_name, start, end in (('feed', ('tank', 'outlet'), ('cross', 'inlet')),
+                                  ('east_line', ('cross', 'outlet'), ('east', 'inlet')),
+                                  ('north_line', ('cross', 'upper_branch'), ('north', 'inlet')),
+                                  ('south_line', ('cross', 'lower_branch'), ('south', 'inlet'))):
+        cross_model['lines'].append({'identifier': line_name, 'points': [[0, 0], [10, 0]],
+                                     'start': {'kind': 'port', 'block': start[0], 'port': start[1]},
+                                     'end': {'kind': 'port', 'block': end[0], 'port': end[1]},
+                                     'properties': dict(default_line_properties(), length=6.0)})
+    cross_results = solve_model(cross_model)
+    cross_calculated = cross_results['blocks']['cross']['calculated']
+    check('Cross mass balance (in = out + up + down)',
+          cross_calculated['calculated_outlet_flow'] + cross_calculated['calculated_upper_branch_flow']
+          + cross_calculated['calculated_lower_branch_flow'], cross_calculated['calculated_inlet_flow'], 1e-8)
+    check('Cross branches symmetric (up = down)', cross_calculated['calculated_upper_branch_flow'],
+          cross_calculated['calculated_lower_branch_flow'], 1e-6)
     print('ALL PASSED' if all_passed else 'SOME CHECKS FAILED')
     return 0 if all_passed else 1
 
@@ -2978,6 +3059,12 @@ def draw_symbol(painter, block_type, state, color):
         painter.drawLine(QPointF(0, 0), QPointF(0, base_height / 2))
         painter.setBrush(stroke_color)
         painter.drawEllipse(QPointF(0, 0), 4, 4)
+    elif block_type == 'cross':
+        painter.setPen(QPen(stroke_color, 5.0))
+        flow_line(-half_width, half_width)
+        painter.drawLine(QPointF(0, -base_height / 2), QPointF(0, base_height / 2))
+        painter.setBrush(stroke_color)
+        painter.drawEllipse(QPointF(0, 0), 4, 4)
     elif block_type == 'elbow':
         painter.setPen(QPen(stroke_color, 5.0))
         elbow_path = QPainterPath(QPointF(-half_width, 0))
@@ -3251,18 +3338,23 @@ class BlockItem(DataLabelVisibility, QGraphicsItem):
         width, height = self.size()
         used_directions = {tuple(port.direction) for port in self.ports.values()}
         free_sides = [side for side, direction in (('top', (0, -1)), ('bottom', (0, 1)), ('left', (-1, 0)),
-                                                   ('right', (1, 0))) if direction not in used_directions] or ['top']
+                                                   ('right', (1, 0))) if direction not in used_directions]
         if self.name_label.text != self.name:
             self.name_label.set_text(self.name)
         name_rectangle = self.name_label.boundingRect()
         result_rectangle = self.result_label.boundingRect()
-        name_side = 'top' if 'top' in free_sides else ('left' if 'left' in free_sides else free_sides[0])
-        if 'bottom' in free_sides:
-            result_side = 'bottom'
-        elif 'right' in free_sides and name_side != 'right':
-            result_side = 'right'
+        if not free_sides:
+            # ports on all four edges (cross): name upper-left, results upper-right,
+            # beside the side ports and clear of the vertical branch lines
+            name_side, result_side = 'left', 'right'
         else:
-            result_side = name_side
+            name_side = 'top' if 'top' in free_sides else ('left' if 'left' in free_sides else free_sides[0])
+            if 'bottom' in free_sides:
+                result_side = 'bottom'
+            elif 'right' in free_sides and name_side != 'right':
+                result_side = 'right'
+            else:
+                result_side = name_side
 
         def position_for(side, rectangle, row):
             if side == 'top':
@@ -5961,9 +6053,10 @@ class ScenarioPanel(QWidget):
 HELP_TEXT = """
 <h3>Pylon</h3>
 <p><b>Ports</b> — blocks take flow in on the left and out on the right (tee branch and 90° fitting
-outlet at the bottom). The tank has its inlet on top and its outlet on the bottom.</p>
+outlet at the bottom; the cross has branches at the top and bottom). The tank has its inlet on top and
+its outlet on the bottom.</p>
 <p><b>Blocks</b> — click or drag from the <i>Component Blocks</i> column. Drag a block to move it.
-Click the <b>centre</b> of a block to toggle its state (tees and 90° fittings have no toggle).
+Click the <b>centre</b> of a block to toggle its state (tees, crosses and 90° fittings have no toggle).
 Right-click for Properties, State, Rotate, Copy, Duplicate Block, Save Block and Delete Block.
 Double-click the body for properties.
 <b>Ctrl+Z</b> undoes and <b>Ctrl+Y</b> redoes. <b>R</b> / <b>Shift+R</b> (or the toolbar's Rotate

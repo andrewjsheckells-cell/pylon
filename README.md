@@ -6,7 +6,7 @@
 
 ## Features
 
-- **Schematic editor (PySide6).** Starting blocks for a tank, latch valve, filter, flowmeter, pressure transducer, pump, thruster, orifice, tee and 90° fitting.
+- **Schematic editor (PySide6).** Starting blocks for a tank, latch valve, filter, flowmeter, pressure transducer, pump, thruster, orifice, tee, cross and 90° fitting.
   - Click a block's centre to toggle its state, double-click for properties, right-click for its menu.
   - Save customised blocks to a *Component Blocks* library shown in the left column.
 - **Plumbing lines.** Orthogonal tubes that route around every component, never over it.
@@ -66,4 +66,4 @@ Python 3.9 or newer is required. To try the pump-curve import, right-click a pum
 
 ## Status
 
-Version 1.11. The solver passes its built-in self-test (`--selftest`), which covers closed-form orifice flow, Hagen–Poiseuille, Colebrook, the Cv relation, mass balances, orifice sizing, pump-curve interpolation and file upgrades. Verify the loss-coefficient defaults against your own hardware data before relying on results for design decisions.
+Version 1.12. The solver passes its built-in self-test (`--selftest`), which covers closed-form orifice flow, Hagen–Poiseuille, Colebrook, the Cv relation, mass balances, orifice sizing, pump-curve interpolation and file upgrades. Verify the loss-coefficient defaults against your own hardware data before relying on results for design decisions.
