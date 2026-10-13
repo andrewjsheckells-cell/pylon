@@ -6,7 +6,7 @@ A PySide6 desktop tool for drawing a spacecraft liquid-propulsion feed-system sc
 
 | | |
 |---|---|
-| Program | `pylon.py` (single file, version 1.10) |
+| Program | `pylon.py` (single file, version 1.11) |
 | Requires | Python ≥ 3.9, `PySide6`, `numpy` |
 | Run | `pip install PySide6 numpy` then `python pylon.py [schematic.pylon.json]` |
 | Solver self-test (no GUI) | `python pylon.py --selftest` |
@@ -33,7 +33,7 @@ The interface uses a dark sci-fi console style taken from the user's reference s
 * **Headings** are engraved gold capitals with a fading gold rule.
 * **Buttons** are dark plates with gold borders. Dialog accept buttons (OK, Apply) have **green** text and cancel/close buttons have **red** text, like the reference's Start/Cancel.
 * **Components and fittings have no frame or border.** Each is just its glowing cyan symbol on the canvas. The name is engraved in gold above it and the results sit on a plate below it. On an edge that has a port (the tank's top and bottom), the name and results move to a free side so the pipes stay clear. Blocks in an OFF or blocked state show a grey symbol. A selected block gets a soft translucent cyan halo; a block with a warning gets a translucent red halo and a "!" badge. The click/hit area is still the block's full footprint.
-* **Pump symbol:** a gear pump — a round casing with two meshing spur gears stacked across the flow (as in an external gear pump, the inlet and outlet sit on opposite sides of the mesh). The gears are shaded while the pump is ON and outlined (grey) when it is OFF.
+* **Pump symbol:** the gear-pump symbol — a casing circle with two touching gear circles and a **V whose point marks the outlet**, so the V shows the flow direction (left to right on an unrotated block; it turns with the block when rotated). The gears are shaded while the pump is ON and the symbol is grey when it is OFF.
 * **Tank:** drawn 4× the earlier size (a 176 × 280 px capsule in a 200 × 400 px footprint), with brass tube stubs from the capsule to the top inlet and the bottom outlet. The fill level shows the state (Nominal / Maximum / Minimum), and the state and pressure are written inside the tank.
 * **Plumbing lines** are drawn as brass pipes (dark outline, gold body, light highlight) with cyan flow arrows, and turn cyan when selected.
 * **Flow labels** are dark plates with a thin gold border. They are placed beside each tube so they do not cover blocks or other labels where there is room.
@@ -418,8 +418,9 @@ LOOK AND FEEL (dark sci-fi console style; no game assets, logos or fonts copied)
   and status bar with gold rules. Dialog accept buttons get green text, reject buttons red text.
 - Canvas:
   - deep-space gradient with a cyan dot grid every 20 px and faint gold cross-hairs every 100 px;
-  - pump symbol = gear pump: circle casing (r 21) with two 8-tooth spur gears (tip r 10, root r 7.4)
-    centred above and below the flow line, meshing at the centre, shafts as dots; gears shaded when ON;
+  - pump symbol = gear pump: casing circle (r 21); a V from the top and bottom of the circle to its
+    point on the outlet side (the V points in the flow direction); two touching gear circles (r 0.3 R)
+    stacked one above the other, set back toward the inlet (centre x = -0.2 R); gears shaded when ON;
   - components and fittings have NO frame or border: just the cyan symbol (with thin lead lines to
     the ports), the name engraved in gold above and a cyan state caption; OFF = grey symbol;
   - selection = translucent cyan halo behind the symbol, warning = translucent red halo + "!" badge;
@@ -652,3 +653,4 @@ CODE CONVENTIONS
 | 1.8 | 2026-10-01 | Undo/redo (toolbar, Ctrl+Z / Ctrl+Y). Rotate left/right in the toolbar and Edit menu (Shift+R / R) and in the block menu. *Show flow / pressure data* toolbar toggle (D) hides or shows every flow and pressure label; hidden labels appear while hovering a block or line; right-click sets visibility per element; all saved in the file. |
 | 1.9 | 2026-10-01 | Pump is curve-only: the fixed-flowrate mode (and its ON-state model and flowrate inputs) was removed because it forced the set flow through any downstream restriction and drove the outlet pressure far too high. An ON pump follows its RPM curves (interpolated between speeds); with no curves it is solved as stopped and flagged on the block. The on-block box now edits the speed (rpm). Example bypass orifice re-sized to 0.00914 in for 3000 rpm. Older files and saved blocks drop the obsolete keys on load. |
 | 1.10 | 2026-10-13 | Pump icon changed to the gear-pump symbol (casing with two meshing spur gears) on the schematic and in the component column. |
+| 1.11 | 2026-10-13 | Pump icon changed to the user's gear-pump symbol: casing circle, two touching gear circles and a V pointing to the outlet to show the flow direction. |

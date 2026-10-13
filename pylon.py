@@ -83,7 +83,7 @@ import uuid
 import numpy
 
 APPLICATION_NAME = "Pylon"
-APPLICATION_VERSION = "1.10"
+APPLICATION_VERSION = "1.11"
 FILE_FORMAT_VERSION = 3
 
 # =============================================================================
@@ -2861,19 +2861,6 @@ def draw_pipe(painter, start, end, body_color=None):
     painter.restore()
 
 
-def gear_outline(center, tip_radius, root_radius, tooth_count, start_angle=0.0):
-    """Polygon of a spur gear: trapezoidal teeth between the root and tip circles."""
-    pitch = 2 * math.pi / tooth_count
-    points = []
-    for tooth_index in range(tooth_count):
-        middle = start_angle + tooth_index * pitch
-        for radius, angle in ((root_radius, middle - 0.5 * pitch), (root_radius, middle - 0.28 * pitch),
-                              (tip_radius, middle - 0.16 * pitch), (tip_radius, middle + 0.16 * pitch),
-                              (root_radius, middle + 0.28 * pitch)):
-            points.append(QPointF(center.x() + radius * math.cos(angle), center.y() + radius * math.sin(angle)))
-    return QPolygonF(points)
-
-
 def draw_symbol(painter, block_type, state, color):
     """Draw a component symbol centred at the origin in the block's base
     (unrotated) frame.  Flow runs left to right (the tank: top to bottom)."""
@@ -2952,19 +2939,21 @@ def draw_symbol(painter, block_type, state, color):
         painter.drawEllipse(QPointF(0, -8), 17, 17)
         draw_letters(QRectF(-17, -25, 34, 34), 'PT')
     elif block_type == 'pump':
-        # gear pump: round casing with two meshing spur gears stacked across the flow
-        # (external gear pump: inlet and outlet on opposite sides of the mesh point)
-        flow_line(-half_width, -21)
-        flow_line(21, half_width)
+        # gear pump symbol: casing circle, two touching gear circles, and a V whose point
+        # sits on the casing at the outlet - the V points in the flow direction (left to right)
+        casing_radius = 21.0
+        flow_line(-half_width, -casing_radius)
+        flow_line(casing_radius, half_width)
         painter.setBrush(interior_fill)
-        painter.drawEllipse(QPointF(0, 0), 21, 21)
-        tooth_count, gear_center_offset = 8, 9.4
-        for gear_center_y, phase in ((-gear_center_offset, 0.0), (gear_center_offset, 0.5)):
-            painter.setBrush(translucent_fill if state == 0 else interior_fill)
-            painter.drawPolygon(gear_outline(QPointF(0, gear_center_y), 10.0, 7.4, tooth_count,
-                                             phase * 2 * math.pi / tooth_count + math.pi / 2))
-            painter.setBrush(stroke_color)
-            painter.drawEllipse(QPointF(0, gear_center_y), 1.6, 1.6)          # shaft
+        painter.drawEllipse(QPointF(0, 0), casing_radius, casing_radius)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawPolyline(QPolygonF([QPointF(0, -casing_radius), QPointF(casing_radius, 0),
+                                        QPointF(0, casing_radius)]))
+        gear_radius = 0.30 * casing_radius
+        gear_center_x = -0.20 * casing_radius          # gears sit back from the V, toward the inlet
+        painter.setBrush(translucent_fill if state == 0 else interior_fill)
+        for gear_center_y in (-gear_radius, gear_radius):
+            painter.drawEllipse(QPointF(gear_center_x, gear_center_y), gear_radius, gear_radius)
     elif block_type == 'thruster':
         flow_line(-half_width, -34)
         painter.setBrush(interior_fill)
