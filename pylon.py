@@ -83,7 +83,7 @@ import uuid
 import numpy
 
 APPLICATION_NAME = "Pylon"
-APPLICATION_VERSION = "1.13"
+APPLICATION_VERSION = "1.14"
 FILE_FORMAT_VERSION = 3
 
 # =============================================================================
@@ -2385,6 +2385,26 @@ def route_model_lines(model):
 # =============================================================================
 # Example system
 # =============================================================================
+def incremented_name(name, taken_names):
+    """Name for a copy of a block: the last number in the name plus one ('LV-1' -> 'LV-2',
+    'TK-09' -> 'TK-10', 'Valve 2 left' -> 'Valve 3 left'); a name without a number gets ' 1'
+    ('Main valve' -> 'Main valve 1').  Keeps counting past names already in use."""
+    match = None
+    for match in re.finditer(r'\d+', name):
+        pass                                             # keep the last run of digits
+    if match is not None:
+        before, after = name[:match.start()], name[match.end():]
+        number, width = int(match.group()) + 1, len(match.group())
+    else:
+        before = name if (not name or name[-1] in ' -_') else name + ' '
+        after, number, width = '', 1, 1
+    while True:
+        candidate = f"{before}{number:0{width}d}{after}"
+        if candidate not in taken_names:
+            return candidate
+        number += 1
+
+
 def new_identifier():
     return uuid.uuid4().hex[:8]
 
@@ -2599,6 +2619,14 @@ def run_self_test():
           + cross_calculated['calculated_lower_branch_flow'], cross_calculated['calculated_inlet_flow'], 1e-8)
     check('Cross branches symmetric (up = down)', cross_calculated['calculated_upper_branch_flow'],
           cross_calculated['calculated_lower_branch_flow'], 1e-6)
+    print("Copy names")
+    taken = {'LV-1', 'LV-2', 'Main valve', 'TK-09'}
+    naming_cases = [('LV-1', 'LV-3'), ('LV-2', 'LV-3'), ('Main valve', 'Main valve 1'), ('TK-09', 'TK-10'),
+                    ('Valve 2 left', 'Valve 3 left'), ('Pump-', 'Pump-1')]
+    naming_ok = all(incremented_name(original, taken) == expected for original, expected in naming_cases)
+    print(f"  [{'PASS' if naming_ok else 'FAIL'}] copy names increment the last number "
+          f"({', '.join(f'{original} -> {incremented_name(original, taken)}' for original, _ in naming_cases)})")
+    all_passed &= naming_ok
     print('ALL PASSED' if all_passed else 'SOME CHECKS FAILED')
     return 0 if all_passed else 1
 
@@ -4353,12 +4381,17 @@ class SchematicScene(QGraphicsScene):
             return attachment
 
         new_items = []
+        taken_names = {existing.name for existing in self.blocks.values()}
         self.loading = True                       # defer re-routing until everything exists
         try:
             for block in payload['blocks']:
                 block_data = copy.deepcopy(block)
                 block_data['identifier'] = block_identifier_map[block['identifier']]
-                block_data['name'] = None
+                # copy name: last number + 1 (or ' 1' added), skipping names already in use
+                block_data['name'] = (incremented_name(block['name'], taken_names) if block.get('name')
+                                      else None)
+                if block_data['name']:
+                    taken_names.add(block_data['name'])
                 block_data['x'] = block['x'] + offset_x
                 block_data['y'] = block['y'] + offset_y
                 new_items.append(self.add_block(block_data))

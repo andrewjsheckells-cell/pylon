@@ -6,7 +6,7 @@ A PySide6 desktop tool for drawing a spacecraft liquid-propulsion feed-system sc
 
 | | |
 |---|---|
-| Program | `pylon.py` (single file, version 1.13) |
+| Program | `pylon.py` (single file, version 1.14) |
 | Requires | Python ≥ 3.9, `PySide6`, `numpy` |
 | Run | `pip install PySide6 numpy` then `python pylon.py [schematic.pylon.json]` |
 | Solver self-test (no GUI) | `python pylon.py --selftest` |
@@ -83,7 +83,8 @@ The interface uses a dark sci-fi console style taken from the user's reference s
   * A selected line whose end is attached to something that was not copied is pasted with that end free.
   * **Ctrl+V** (Ctrl+P also works) pastes next to the original. Each further paste of the same copy steps 40 px further. The group is nudged right/down until it clears every existing block and line; if there is no room nearby, it is placed below the whole schematic.
   * Right-click empty canvas → *Paste here* centres the group on the click point.
-  * Pasted blocks and lines get new identifiers and the next free names (LV-2, L12, …), keep their properties, states, orientation and pump curves, and are selected so they can be dragged as a group.
+  * **Copy names:** a pasted or duplicated block takes the original's name with its number increased by 1 (LV-1 → LV-2, TK-09 → TK-10, "Valve 2 left" → "Valve 3 left"). A name without a number gets " 1" added ("Main filter" → "Main filter 1"), and later copies keep counting ("Main filter 2", …). A name already in use is skipped (copying LV-1 when LV-2 exists gives LV-3). Pasted lines take the next free line names (L12, …).
+  * Pasted blocks and lines get new identifiers, keep their properties, states, orientation and pump curves, and are selected so they can be dragged as a group.
   * The copy is also put on the system clipboard, so it can be pasted into a second window of the program.
   * While a text field (including the pump's flowrate box on the block) has the keyboard, these keys act on the text instead.
 * **Keyboard:** Ctrl+Z undoes and Ctrl+Y (or Ctrl+Shift+Z) redoes; Delete removes the selection; Ctrl+C copies, Ctrl+V / Ctrl+P pastes, Ctrl+D duplicates the selection (blocks plus the lines between them) in one step; R rotates right and Shift+R rotates left; D shows/hides the flow and pressure data; S selects, L draws lines, Esc cancels or clears.
@@ -261,6 +262,7 @@ For an orifice in parallel with the pump (one side on the pump-outlet manifold, 
 * that the A* route clears an obstacle;
 * that a version 2 file is upgraded to version 3 with every key renamed;
 * that a cross with identical loads on its outlet and both branches balances and splits the branch flows equally;
+* that copy names increment the last number (with zero padding), add " 1" when there is none, and skip names in use;
 * that a pump at a speed between two stored curves interpolates correctly (3500 rpm between 3000 and 4000 rpm gear-pump curves gives 396 mL/min at 200 psid), and that a speed outside the stored curves is reported.
 
 ## 6. File formats
@@ -504,7 +506,10 @@ and symbol rotate; text stays upright).
   offset 40 px × the paste count since the copy; right-click canvas → Paste here centres it on the
   click. Then nudge right/down in 40 px steps until no pasted block comes within 20 px of an
   existing block and no pasted/existing line crosses a block; if none is found, place the group
-  below the whole schematic. New identifiers and next free names; attachments remapped; points
+  below the whole schematic. New identifiers; block names via incremented_name(): the last run of
+  digits + 1 keeping zero padding ('LV-1' -> 'LV-2'), or ' 1' appended when there is no number
+  ('Main filter' -> 'Main filter 1'), counting on past names already in use (including names given
+  earlier in the same paste); lines get the next free L-number; attachments remapped; points
   offset; any line that then crosses a block is re-routed; pasted items are selected. Ctrl+D
   (Duplicate) copies and pastes the selection without touching the clipboard. Copy/paste keys are
   ignored while a text field or the pump flow box has the keyboard.
@@ -677,3 +682,4 @@ CODE CONVENTIONS
 | 1.11 | 2026-10-13 | Pump icon changed to the user's gear-pump symbol: casing circle, two touching gear circles and a V pointing to the outlet to show the flow direction. |
 | 1.12 | 2026-10-13 | Cross fitting added: four ports (inlet, outlet, upper and lower branches), tube sizes per port, tee-based Crane/two-K arm losses, per-port flows; no toggle. Blocks with ports on all four edges place their name upper-left and results upper-right. Self-test check added. |
 | 1.13 | 2026-10-13 | Labels moved close to their components, inside each block's invisible box: name just above the symbol, state caption / pump RPM row and results just below, or on a free side where an edge has a port. Tank labels sit inside the capsule. Latch valve, flowmeter, filter, orifice, thruster and pump footprints made taller so the labels fit; side port positions unchanged. |
+| 1.14 | 2026-10-13 | Copied or duplicated blocks are named from the original: the last number in the name + 1 (LV-1 → LV-2), or " 1" added when there is no number, counting on past names in use. Self-test check added. |
