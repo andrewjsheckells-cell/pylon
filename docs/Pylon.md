@@ -6,7 +6,7 @@ A PySide6 desktop tool for drawing a spacecraft liquid-propulsion feed-system sc
 
 | | |
 |---|---|
-| Program | `pylon.py` (single file, version 1.18) |
+| Program | `pylon.py` (single file, version 1.19) |
 | Requires | Python ≥ 3.9, `PySide6`, `numpy` |
 | Run | `pip install PySide6 numpy` then `python pylon.py [schematic.pylon.json]` |
 | Solver self-test (no GUI) | `python pylon.py --selftest` |
@@ -147,7 +147,7 @@ Blocks added after a scenario was saved keep their current values when it is app
 * **What is logged:**
   * session start, with the Pylon, Python, PySide6/Qt and numpy versions and the operating system;
   * files opened and saved, images exported, pump curves imported;
-  * **warnings:** every component or solver warning (pressure above a limit, pump outside its curves or limits, thruster inlet above maximum, COPV warnings, …) is logged as `Warning: <name>: <text>` when it first appears, and `Warning cleared: …` when it goes away. Warnings are not repeated on every auto-solve. A solve that does not converge is logged once, along with when it converges again. Qt warnings and Python warnings are logged too;
+  * **warnings:** every component or solver warning (pressure above a limit, pump outside its curves or limits, thruster inlet above maximum, COPV warnings, …) is logged as `Warning: <name>: <text>` when it first appears, and `Warning cleared: …` (with its latest values) when it goes away. A warning counts as the same warning while only its numbers change (e.g. *SGP-1: Outlet 968 psia above maximum 400* → *533 psia*), so it is not logged again on every solve; with `--debug` the changing values are logged too. A solve that does not converge is logged once, along with when it converges again. Qt warnings and Python warnings are logged too;
   * **errors:** files that can't be opened or written, failed curve imports, solver exceptions, and every unhandled error with its full traceback.
 * **Unexpected errors** open an *Error* dialog instead of failing silently. The dialog shows the error and traceback and where it was logged, with *Save error report…*, *Copy details*, *Open log folder* and *Close*. Pylon keeps running; if the schematic looks wrong afterwards, save it under a new name. A hard crash inside Qt is written to `Logs/crash.log`.
 * **Help → Generate error report… (Ctrl+Shift+E)** asks what you were doing (optional) and whether to include the schematic, then saves a text file (`pylon_error_report_<date>_<time>.txt`, in the log folder by default). Its sections are:
@@ -190,6 +190,7 @@ Notes
 * **Fill & drain valve:** symbolic only. It has **one connection point**, drawn as a closed hand valve with a cap on its service side. It is a dead end (no flow) and reads the pressure where it is connected, like a transducer. A line attached to the outlet of a v1.15 fill & drain valve is left with a free end when the file is opened.
 * **Pump OFF** acts as an orifice with the stopped-state ESEOD and Cd.
 * **Pump ON always follows its imported RPM curves** (since v1.9; the earlier fixed-flowrate mode was removed because it forced the set flow through whatever pressure that took, which drove the outlet pressure far too high whenever the downstream restriction did not match). The flow comes from the curve for the set speed as a function of the pump ΔP, so the outlet pressure settles where the pump curve meets the system. The flowrate is a calculated result, shown on the block's result plate and in Properties.
+* **Pump ON past the end of its curve data** — a pressure rise above the highest (or below the lowest) ΔP point of the curve(s) in use — is flagged with a warning: *ΔP X psid is outside the 3000 rpm curve data (0–300 psid); flow is extrapolated*. Beyond the data the curve is a straight-line extension of its last segment; a stiff positive-displacement curve extended this way can drive the outlet pressure far above anything the pump was tested at. Between two stored speeds only the ΔP range both curves cover counts as data. A running pump with reversed (negative) flow is also flagged.
 * **Pump ON with no curves** is solved as stopped (the stopped-state orifice) and flagged with a warning badge: import curves with right-click → *Pump curves…*.
 * **Tubing size** fields accept a standard size from the list (OD × wall, inches) or a custom `OD x wall` string such as `5/16" x 0.035"`.
 * **Footprints (Medium icon size):** in-line components are 80 px between ports (orifice 60, thruster 50 from the inlet to the centre), so the tube stubs from a symbol to its ports are about 20 px. Tee, cross and 90° fitting arms are 20 px (40 × 40 fittings). The tank's top and bottom stubs are 30 px (200 × 340 footprint), the COPV's 5 px, and the transducer's 21 px. Since v1.18 these are half their earlier lengths; lines in older files that no longer meet their ports are re-routed when the file is opened.
@@ -321,6 +322,7 @@ For an orifice in parallel with the pump (one side on the pump-outlet manifold, 
 * that copy names increment the last number (with zero padding), add " 1" when there is none, and skip names in use;
 * that every port of every block type sits on the 10 px grid and on its box edge at all three icon sizes (latch valve outlet 30 / 40 / 60 px; tee arm 20 px);
 * that flips mirror the ports across the screen axes at every rotation, undo themselves, and that horizontal then vertical equals a 180° rotation;
+* that a pump driven past the end of its curve data is flagged as extrapolated, and that a warning whose numbers change counts as one warning in the log;
 * that an error report contains every section, the warnings by component name, and a schematic that reloads exactly;
 * that a pump at a speed between two stored curves interpolates correctly (3500 rpm between 3000 and 4000 rpm gear-pump curves gives 396 mL/min at 200 psid), and that a speed outside the stored curves is reported.
 
@@ -732,6 +734,10 @@ PHYSICS
   - Regions with no pressure boundary get no pressure and zero flow.
   - Network issues for a block (pump without curves, speed outside its curves) are listed in the
     warnings and also badge the block.
+- Pump ON with curves: warn "ΔP X psid is outside the <speed> rpm curve data (lo–hi psid); flow is
+  extrapolated" when the rise is outside pump_curve_pressure_range() (the curve's ΔP span at a stored
+  or end speed; the overlap of both curves between speeds) by more than max(1 % of the span, 0.5 psid),
+  and "Flow is reversed (negative) through the running pump" when ṁ < 0.
 - Warnings: component max pressure, pump inlet min/max, outlet max and ΔP max, thruster max inlet
   pressure, negative absolute pressure, tank backfilled above its max pressure, COPV warnings.
 - Auto-solve runs 150 ms after any change that affects the physics.
@@ -794,7 +800,9 @@ ERROR LOG
   (logs every solve); default INFO.
 - After each solve: log "Solver did not converge: <message>" once (and "Solver converged again"),
   and diff named_warnings(model, results['warnings']) ("NAME: text") against the previous set:
-  new ones at WARNING "Warning: …", removed ones at INFO "Warning cleared: …". Reset on open.
+  keyed by warning_key(text) (the text with its numbers replaced, so changing values are the same
+  warning): new keys at WARNING "Warning: …", changed values at DEBUG, removed keys at INFO
+  "Warning cleared: <latest text>". Reset on open.
 - record_error(summary, details) logs at ERROR and keeps the error for reports: open/save/export/
   library-write failures and solver exceptions (with traceback). Pump-curve import failures WARNING.
 - Unhandled exceptions: log CRITICAL with traceback, keep for reports, show ErrorDialog (summary,
@@ -842,3 +850,4 @@ CODE CONVENTIONS
 | 1.16 | 2026-10-13 | Fill & drain valve has a single connection point (left), drawn with a cap on its service side; it reads the pressure where it is connected. Lines attached to the old outlet port are freed when a file is opened or pasted, and the outlet tubing size is dropped. Self-test checks updated. |
 | 1.17 | 2026-10-13 | Error log: errors and warnings go to `Logs/pylon.log` (rotating). Component and solver warnings are logged when they appear and clear; Qt and Python warnings, file and import failures, and unhandled errors with tracebacks are logged too. An unhandled error opens an error dialog, and hard crashes go to `Logs/crash.log`. *Help → Generate error report…* saves a text report with the environment, errors, current warnings, recent log and, optionally, the schematic. `--debug` logs every solve. Self-test check added. |
 | 1.18 | 2026-10-13 | **Flip horizontal / vertical** (toolbar, Edit, block menu; H / V): mirrors blocks on screen at any rotation, with their ports; lettering stays upright. **Icon size** Small / Medium / Large per block (0.75× / 1× / 1.5×), saved with the block in schematics, saved blocks, copies and assemblies. **Export line drawing (black and white)** as SVG, PDF or PNG, with optional names, states, data and flow arrows. Tube stubs on every component and the arms of tees, crosses and 90° fittings are half as long (40 × 40 fittings, 80 px in-line components); lines in older files re-route to the moved ports on open. Self-test checks added. |
+| 1.19 | 2026-10-13 | From a user log: a running pump whose operating point is past the end of its curve data is now warned as extrapolated (a stiff curve extended past its data can give very high outlet pressures), and reversed pump flow is flagged. The log records a warning once while only its numbers change, instead of logging it again and "clearing" the old values on every solve. The version string now matches the release (1.18 still reported 1.17). Self-test checks added. |

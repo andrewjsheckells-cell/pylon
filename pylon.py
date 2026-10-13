@@ -92,7 +92,7 @@ import uuid
 import numpy
 
 APPLICATION_NAME = "Pylon"
-APPLICATION_VERSION = "1.17"
+APPLICATION_VERSION = "1.19"
 FILE_FORMAT_VERSION = 3
 
 # Program log (errors and warnings).  Silent until the GUI attaches its handlers (see ErrorLog).
@@ -919,6 +919,32 @@ def make_pump_curve_function_for_speed(pump_curves, revolutions_per_minute, dens
     return None, None
 
 
+def pump_curve_pressure_range(pump_curves, revolutions_per_minute):
+    """(lowest, highest) pressure rise [psid] covered by the curve data used at this speed,
+    and a description of those curves; None if there are no curves.  Between two stored
+    speeds only the range both curves cover counts as data."""
+    speeds = sorted((float(key), key) for key in (pump_curves or {}) if pump_curves[key])
+    if not speeds:
+        return None
+
+    def span(key):
+        rises = [float(point[0]) for point in pump_curves[key]]
+        return min(rises), max(rises)
+    exact_points = curve_points_for_speed(pump_curves, revolutions_per_minute)
+    if exact_points:
+        rises = [float(point[0]) for point in exact_points]
+        return min(rises), max(rises), f"{revolutions_per_minute:g} rpm curve"
+    if revolutions_per_minute <= speeds[0][0]:
+        return (*span(speeds[0][1]), f"{speeds[0][0]:g} rpm curve")
+    if revolutions_per_minute >= speeds[-1][0]:
+        return (*span(speeds[-1][1]), f"{speeds[-1][0]:g} rpm curve")
+    for (low_speed, low_key), (high_speed, high_key) in zip(speeds, speeds[1:]):
+        if low_speed < revolutions_per_minute < high_speed:
+            (low_min, low_max), (high_min, high_max) = span(low_key), span(high_key)
+            return max(low_min, high_min), min(low_max, high_max), f"{low_speed:g} and {high_speed:g} rpm curves"
+    return None
+
+
 def make_pump_curve_function(points, density):
     """Return f(pressure_rise_pascals) -> (mass_flow kg/s, d mass_flow / d pressure_rise)
     from [(pressure_rise_psid, volumetric_flow_mL_per_min), ...].
@@ -1010,6 +1036,16 @@ def named_warnings(model, warnings):
                   for line in (model or {}).get('lines', [])})
     return [f"{names.get(identifier, identifier) if identifier else 'System'}: {text}"
             for identifier, text in (warnings or [])]
+
+
+_NUMBER_PATTERN = re.compile(r'[-+]?\d+(?:[.,]\d+)*(?:[eE][-+]?\d+)?')
+
+
+def warning_key(text):
+    """The warning condition without its numbers, so 'P-1: Outlet 968 psia above maximum 400'
+    and 'P-1: Outlet 533 psia above maximum 400' count as the same warning in the log."""
+    name, separator, message = text.partition(': ')
+    return name + separator + _NUMBER_PATTERN.sub('#', message) if separator else _NUMBER_PATTERN.sub('#', text)
 
 
 def environment_summary(extra=None):
@@ -1845,6 +1881,20 @@ def solve_model(model, initial_guess=None):
                      f"ΔP {format_number(psia_from_pascals(outlet_pressure - inlet_pressure))} psid above maximum "
                      f"{format_number(float(properties.get('maximum_differential_pressure', 0)))}"))
                 warnings.extend(text for violated, text in limits if violated)
+                # an operating point past the ends of the imported data is a straight-line extrapolation
+                # of the curve: flag it so the result is not mistaken for measured pump performance
+                covered = pump_curve_pressure_range(block.get('pump_curves'),
+                                                    float(properties.get('revolutions_per_minute', 0)))
+                if covered is not None:
+                    lowest, highest, curves_used = covered
+                    rise = psia_from_pascals(outlet_pressure - inlet_pressure)
+                    margin = max(0.01 * (highest - lowest), 0.5)
+                    if rise > highest + margin or rise < lowest - margin:
+                        warnings.append(f"ΔP {format_number(rise)} psid is outside the {curves_used} data "
+                                        f"({format_number(lowest)}–{format_number(highest)} psid); "
+                                        f"flow is extrapolated")
+                    if mass_flow < 0:
+                        warnings.append("Flow is reversed (negative) through the running pump")
         elif block_type == 'thruster':
             nominal_mass_flow = thruster_nominal_mass_flow(properties, density)
             specific_impulse = float(properties.get('specific_impulse', 0))
@@ -3007,6 +3057,26 @@ def run_self_test():
     check('v1.15 fill & drain valve outlet: line end freed, outlet size dropped',
           float(old_valve['lines'][0]['start'] is None and old_valve['lines'][0]['end'] is not None
                 and 'outlet_tubing_size' not in old_valve['blocks'][0]['properties']), 1.0, 0)
+
+    stiff_pump = small_model([('tank', 'tank', 0, {'nominal_pressure': 50.0}),
+                              ('pump', 'pump', 0, {'revolutions_per_minute': 3000.0,
+                                                   'maximum_differential_pressure': 1e6,
+                                                   'maximum_outlet_pressure': 1e6}),
+                              ('engine', 'thruster', 0, {'orifice_diameter': 0.005,
+                                                         'inlet_tubing_size': DEFAULT_TUBE})],
+                             [(('tank', 'outlet'), ('pump', 'inlet')), (('pump', 'outlet'), ('engine', 'inlet'))])
+    stiff_pump['blocks'][1]['pump_curves'] = {'3000': [[0, 360.0], [100, 355.0], [200, 350.0]]}
+    stiff_results = solve_model(stiff_pump)
+    stiff_rise = stiff_results['blocks']['pump']['calculated']['calculated_pressure_rise']
+    stiff_warned = any('outside the 3000 rpm curve data' in text for _, text in stiff_results['warnings'])
+    print(f"  [{'PASS' if stiff_warned and stiff_rise > 200 else 'FAIL'}] pump past the end of its curve "
+          f"({stiff_rise:.0f} psid vs data to 200 psid) is flagged as extrapolated")
+    all_passed &= stiff_warned and stiff_rise > 200
+    keys_ok = (warning_key('SGP-1: Outlet 968.1 psia above maximum 400')
+               == warning_key('SGP-1: Outlet 533 psia above maximum 400')
+               != warning_key('SGP-2: Outlet 533 psia above maximum 400'))
+    print(f"  [{'PASS' if keys_ok else 'FAIL'}] a warning whose numbers change is logged once")
+    all_passed &= keys_ok
 
     print("Copy names")
     taken = {'LV-1', 'LV-2', 'Main valve', 'TK-09'}
@@ -7214,7 +7284,7 @@ class MainWindow(QMainWindow):
         self.modified = False
         self._initial_guess = None
         self.last_results, self.last_model = None, None
-        self._logged_warnings, self._logged_solver_message = set(), None
+        self._logged_warnings, self._logged_solver_message = {}, None
         self._clipboard = None
         self._paste_count = 0
         self._history = []
@@ -7446,14 +7516,17 @@ class MainWindow(QMainWindow):
         elif results['converged'] and self._logged_solver_message is not None:
             LOGGER.info("Solver converged again: %s", results['message'])
         self._logged_solver_message = None if results['converged'] else results['message']
-        current = named_warnings(model, results['warnings'])
-        current_set = set(current)
-        for text in current:
-            if text not in self._logged_warnings:
+        # one entry per warning *condition*: a warning whose numbers change from solve to solve
+        # (e.g. "Outlet 968 psia above maximum 400" -> "Outlet 533 psia ...") is the same warning
+        current = {warning_key(text): text for text in named_warnings(model, results['warnings'])}
+        for key, text in current.items():
+            if key not in self._logged_warnings:
                 LOGGER.warning("Warning: %s", text)
-        for text in sorted(self._logged_warnings - current_set):
-            LOGGER.info("Warning cleared: %s", text)
-        self._logged_warnings = current_set
+            elif self._logged_warnings[key] != text:
+                LOGGER.debug("Warning still active: %s", text)
+        for key in sorted(set(self._logged_warnings) - set(current)):
+            LOGGER.info("Warning cleared: %s", self._logged_warnings[key])
+        self._logged_warnings = current
 
     def generate_error_report(self):
         """Help → Generate error report…: write a text report to send with a problem."""
@@ -7489,7 +7562,7 @@ class MainWindow(QMainWindow):
         self.labels_action.setChecked(self.scene.show_labels)
         self.file_path = path
         self._initial_guess = None
-        self._logged_warnings, self._logged_solver_message = set(), None
+        self._logged_warnings, self._logged_solver_message = {}, None
         self.scenario_panel.refresh()
         self.solve_now()
         self.modified = False
