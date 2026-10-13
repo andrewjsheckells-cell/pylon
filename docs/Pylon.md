@@ -6,7 +6,7 @@ A PySide6 desktop tool for drawing a spacecraft liquid-propulsion feed-system sc
 
 | | |
 |---|---|
-| Program | `pylon.py` (single file, version 1.19) |
+| Program | `pylon.py` (single file, version 1.20) |
 | Requires | Python ≥ 3.9, `PySide6`, `numpy` |
 | Run | `pip install PySide6 numpy` then `python pylon.py [schematic.pylon.json]` |
 | Solver self-test (no GUI) | `python pylon.py --selftest` |
@@ -33,7 +33,7 @@ The interface uses a dark sci-fi console style taken from the user's reference s
 * **Frames:** every panel sits in a bevelled **gold metallic frame** with rounded corners, angular corner fins and a thin **red inner trim** around a dark navy panel. The panels are the component column, the schematic, System status, Component data, Warnings and Scenarios, plus every dialog.
 * **Headings** are engraved gold capitals with a fading gold rule.
 * **Buttons** are dark plates with gold borders. Dialog accept buttons (OK, Apply) have **green** text and cancel/close buttons have **red** text, like the reference's Start/Cancel.
-* **Components and fittings have no frame or border.** Each is just its glowing cyan symbol on the canvas. **Labels sit close to the symbol, inside the block's invisible box:** the name just above the symbol, then the state caption (or the pump's RPM row) and the results plate just below it. Where an edge has a port, the labels use a free side instead. The transducer reads beside its gauge; tees stack name and results above the run. An elbow puts its results to its lower right, and a cross puts its name upper-left and results upper-right. On a rotated in-line block the name and state go left of the symbol and the results right of it. The tank shows its name, state and results inside the capsule. Wide result text may extend past the box sideways. Blocks in an OFF or blocked state show a grey symbol. A selected block gets a soft translucent cyan halo; a block with a warning gets a translucent red halo and a "!" badge. The click/hit area is still the block's full footprint.
+* **Components and fittings have no frame or border.** Each is just its glowing cyan symbol on the canvas. **Labels sit close to the symbol, inside the block's invisible box:** the name just above the symbol, then the state caption (or the pump's RPM row) and the results plate just below it. Where an edge has a port, the labels use a free side instead. The transducer reads beside its gauge. **Tees, crosses and 90° fittings have no labels on the canvas** (no name, no results, also when hovering or in a line drawing): their name and flows are in the tooltip, Properties and the Results tab. On a rotated in-line block the name and state go left of the symbol and the results right of it. The tank shows its name, state and results inside the capsule. Wide result text may extend past the box sideways. Blocks in an OFF or blocked state show a grey symbol. A selected block gets a soft translucent cyan halo; a block with a warning gets a translucent red halo and a "!" badge. The click/hit area is still the block's full footprint.
 * **Pump symbol:** the gear-pump symbol — a casing circle with two touching gear circles and a **V whose point marks the outlet**, so the V shows the flow direction (left to right on an unrotated block; it turns with the block when rotated). The gears are shaded while the pump is ON and the symbol is grey when it is OFF.
 * **Tank:** drawn 4× the earlier size (a 176 × 280 px capsule in a 200 × 400 px footprint), with brass tube stubs from the capsule to the top inlet and the bottom outlet. The fill level shows the state (Nominal / Maximum / Minimum), and the state and pressure are written inside the tank.
 * **Plumbing lines** are drawn as brass pipes (dark outline, gold body, light highlight) with cyan flow arrows, and turn cyan when selected.
@@ -194,7 +194,7 @@ Notes
 * **Pump ON with no curves** is solved as stopped (the stopped-state orifice) and flagged with a warning badge: import curves with right-click → *Pump curves…*.
 * **Tubing size** fields accept a standard size from the list (OD × wall, inches) or a custom `OD x wall` string such as `5/16" x 0.035"`.
 * **Footprints (Medium icon size):** in-line components are 80 px between ports (orifice 60, thruster 50 from the inlet to the centre), so the tube stubs from a symbol to its ports are about 20 px. Tee, cross and 90° fitting arms are 20 px (40 × 40 fittings). The tank's top and bottom stubs are 30 px (200 × 340 footprint), the COPV's 5 px, and the transducer's 21 px. Since v1.18 these are half their earlier lengths; lines in older files that no longer meet their ports are re-routed when the file is opened.
-* **Tee orientation:** run = inlet ↔ outlet, branch = bottom port. **Cross:** run = inlet ↔ outlet, branches = top and bottom ports. A cross has ports on all four edges, so its name sits at the upper left and its results at the upper right. **90° fitting:** inlet on the left, outlet on the bottom (rotate as needed).
+* **Tee orientation:** run = inlet ↔ outlet, branch = bottom port. **Cross:** run = inlet ↔ outlet, branches = top and bottom ports. Fittings show no name or result labels on the canvas; hover for the tooltip. **90° fitting:** inlet on the left, outlet on the bottom (rotate as needed).
 
 ## 4. Physics and numerical method
 
@@ -565,6 +565,8 @@ the Tank alone has its inlet on top and its outlet on the bottom. Blocks rotate 
     middle, else stacked between the symbol and the name (tee); caption in the left band if free;
   - left and right free (rotated in-line blocks): name and caption right-aligned left of the symbol,
     results left-aligned right of it;
+  - tees, crosses and 90° fittings (UNLABELED_BLOCK_TYPES): name and result labels always hidden
+    (also on hover and in line drawings); the result text is appended to the tooltip instead;
   - one side band free: name and results stacked in it; no side free (cross): name upper-left,
     results upper-right;
   - tank: name, state caption and results stacked inside the capsule (y -42, -6, +54, × icon scale).
@@ -851,3 +853,4 @@ CODE CONVENTIONS
 | 1.17 | 2026-10-13 | Error log: errors and warnings go to `Logs/pylon.log` (rotating). Component and solver warnings are logged when they appear and clear; Qt and Python warnings, file and import failures, and unhandled errors with tracebacks are logged too. An unhandled error opens an error dialog, and hard crashes go to `Logs/crash.log`. *Help → Generate error report…* saves a text report with the environment, errors, current warnings, recent log and, optionally, the schematic. `--debug` logs every solve. Self-test check added. |
 | 1.18 | 2026-10-13 | **Flip horizontal / vertical** (toolbar, Edit, block menu; H / V): mirrors blocks on screen at any rotation, with their ports; lettering stays upright. **Icon size** Small / Medium / Large per block (0.75× / 1× / 1.5×), saved with the block in schematics, saved blocks, copies and assemblies. **Export line drawing (black and white)** as SVG, PDF or PNG, with optional names, states, data and flow arrows. Tube stubs on every component and the arms of tees, crosses and 90° fittings are half as long (40 × 40 fittings, 80 px in-line components); lines in older files re-route to the moved ports on open. Self-test checks added. |
 | 1.19 | 2026-10-13 | From a user log: a running pump whose operating point is past the end of its curve data is now warned as extrapolated (a stiff curve extended past its data can give very high outlet pressures), and reversed pump flow is flagged. The log records a warning once while only its numbers change, instead of logging it again and "clearing" the old values on every solve. The version string now matches the release (1.18 still reported 1.17). Self-test checks added. |
+| 1.20 | 2026-10-13 | Tees, crosses and 90° fittings no longer show name or result labels on the canvas (including on hover and in line drawings); their flows are in the tooltip, Properties and the Results tab. |

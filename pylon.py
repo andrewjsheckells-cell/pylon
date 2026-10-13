@@ -92,7 +92,7 @@ import uuid
 import numpy
 
 APPLICATION_NAME = "Pylon"
-APPLICATION_VERSION = "1.19"
+APPLICATION_VERSION = "1.20"
 FILE_FORMAT_VERSION = 3
 
 # Program log (errors and warnings).  Silent until the GUI attaches its handlers (see ErrorLog).
@@ -3165,6 +3165,7 @@ except ImportError:
     raise
 
 SCRIPT_DIRECTORY = os.path.dirname(os.path.abspath(__file__))
+UNLABELED_BLOCK_TYPES = ('tee', 'cross', 'elbow')   # fittings: no name / result labels on the canvas
 BLOCK_DIRECTORY = os.path.join(SCRIPT_DIRECTORY, 'Component Blocks')
 LOG_DIRECTORY = os.path.join(SCRIPT_DIRECTORY, 'Logs')
 BLOCK_MIME_TYPE = 'application/x-pylon-block'
@@ -4017,6 +4018,7 @@ class BlockItem(DataLabelVisibility, QGraphicsItem):
         self.ports = {port_name: PortItem(self, port_name) for port_name in self.type_information['ports']}
         self.result_label = LabelItem(self, point_size=7.5)
         self.name_label = LabelItem(self, point_size=8.5, bold=True, color=COLOR_HEADING, plate=False)
+        self.name_label.setVisible(self.shows_labels())
         self.speed_editor = SpeedEditorItem(self) if self.block_type == 'pump' else None
         self._press_position = None
         self.setPos(float(data.get('x', 0)), float(data.get('y', 0)))
@@ -4228,6 +4230,8 @@ class BlockItem(DataLabelVisibility, QGraphicsItem):
                               "double-click for properties"]
         else:
             tooltip_lines.append("Always open (no toggle) · right-click for menu · double-click for properties")
+        if not self.shows_labels() and self.result_label.text:
+            tooltip_lines.append(html.escape(self.result_label.text))
         if self.warnings:
             tooltip_lines += [warning_html(f"⚠ {warning}") for warning in self.warnings]
         self.setToolTip('<br>'.join(tooltip_lines))
@@ -4258,9 +4262,14 @@ class BlockItem(DataLabelVisibility, QGraphicsItem):
             data['assembly'] = self.assembly_identifier
         return data
 
+    def shows_labels(self):
+        """Fittings (tees, crosses, 90° fittings) carry no name or result label on the canvas;
+        their name and results are in the tooltip, Properties and the Results tab."""
+        return self.block_type not in UNLABELED_BLOCK_TYPES
+
     def apply_data_label_visibility(self):
         visible = self.data_labels_visible_now()
-        self.result_label.setVisible(visible and bool(self.result_label.text))
+        self.result_label.setVisible(visible and bool(self.result_label.text) and self.shows_labels())
         # a label revealed by hovering is drawn above neighbouring blocks
         self.setZValue(5 if self._hover_reveal and not self.data_labels_shown() else 1)
 
@@ -8037,8 +8046,10 @@ class MainWindow(QMainWindow):
                     show(port, False)
                 if block.speed_editor is not None:
                     show(block.speed_editor, False)
-                show(block.name_label, bool(options.get('names')) and bool(block.name_label.text))
-                show(block.result_label, bool(options.get('data')) and bool(block.result_label.text))
+                show(block.name_label, bool(options.get('names')) and bool(block.name_label.text)
+                     and block.shows_labels())
+                show(block.result_label, bool(options.get('data')) and bool(block.result_label.text)
+                     and block.shows_labels())
             for line in scene.lines.values():
                 for label in line.labels:
                     show(label, bool(options.get('data')) and bool(getattr(label, 'text', '')))
