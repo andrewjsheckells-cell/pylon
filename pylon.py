@@ -83,7 +83,7 @@ import uuid
 import numpy
 
 APPLICATION_NAME = "Pylon"
-APPLICATION_VERSION = "1.12"
+APPLICATION_VERSION = "1.13"
 FILE_FORMAT_VERSION = 3
 
 # =============================================================================
@@ -339,7 +339,8 @@ BLOCK_TYPES = {
                     _calculated_property('calculated_time_to_empty', 'Time to empty at current outflow', 's')],
         flow_coefficient_links=[]),
     'latch_valve': dict(
-        label='Latch Valve', prefix='LV', size=(120, 80), color='#7a4fb0',
+        label='Latch Valve', prefix='LV', size=(120, 100),
+        symbol_extent=(25, 13, 22, 22), color='#7a4fb0',   # extent: symbol reach up/down/left/right
         ports={'inlet': (-60, 0, -1, 0), 'outlet': (60, 0, 1, 0)},
         states=['Open', 'Closed'],
         properties=[PropertyDefinition('open_orifice_diameter', 'Equivalent orifice diameter (open state)', 'in', 0.10),
@@ -357,7 +358,8 @@ BLOCK_TYPES = {
                     _calculated_property('calculated_mass_flow', 'Mass flow', 'g/s')],
         flow_coefficient_links=[('open_orifice_diameter', 'flow_coefficient', 'discharge_coefficient')]),
     'filter': dict(
-        label='Filter', prefix='FL', size=(120, 80), color='#2f8f6a',
+        label='Filter', prefix='FL', size=(120, 110),
+        symbol_extent=(19, 19, 20, 20), color='#2f8f6a',   # extent: symbol reach up/down/left/right
         ports={'inlet': (-60, 0, -1, 0), 'outlet': (60, 0, 1, 0)},
         states=['Clean', 'Maximum trapped particles'],
         properties=[PropertyDefinition('clean_orifice_diameter', 'Equivalent orifice diameter (no trapped particles)',
@@ -378,7 +380,8 @@ BLOCK_TYPES = {
         flow_coefficient_links=[('clean_orifice_diameter', 'clean_flow_coefficient', 'discharge_coefficient'),
                                 ('clogged_orifice_diameter', 'clogged_flow_coefficient', 'discharge_coefficient')]),
     'flowmeter': dict(
-        label='Flowmeter', prefix='FM', size=(120, 80), color='#b0742a',
+        label='Flowmeter', prefix='FM', size=(120, 100),
+        symbol_extent=(17, 17, 17, 17), color='#b0742a',   # extent: symbol reach up/down/left/right
         ports={'inlet': (-60, 0, -1, 0), 'outlet': (60, 0, 1, 0)},
         states=['Flowing', 'Blocked'],
         properties=[PropertyDefinition('orifice_diameter', 'Equivalent orifice diameter', 'in', 0.07),
@@ -393,14 +396,16 @@ BLOCK_TYPES = {
                     _calculated_property('calculated_mass_flow', 'Measured mass flow', 'g/s')],
         flow_coefficient_links=[('orifice_diameter', 'flow_coefficient', 'discharge_coefficient')]),
     'transducer': dict(
-        label='Pressure Transducer', prefix='PT', size=(80, 80), color='#c0392b',
+        label='Pressure Transducer', prefix='PT', size=(80, 80),
+        symbol_extent=(25, 9, 17, 17), color='#c0392b',   # extent: symbol reach up/down/left/right
         ports={'inlet': (0, 40, 0, 1)},
         states=['ON', 'OFF'],
         properties=[_tube_property('inlet_tubing_size', 'Inlet tubing size'),
                     _calculated_property('calculated_pressure', 'Pressure reading', 'psia')],
         flow_coefficient_links=[]),
     'pump': dict(
-        label='Pump', prefix='P', size=(120, 80), color='#16758f',
+        label='Pump', prefix='P', size=(120, 120),
+        symbol_extent=(21, 21, 21, 21), color='#16758f',   # extent: symbol reach up/down/left/right
         ports={'inlet': (-60, 0, -1, 0), 'outlet': (60, 0, 1, 0)},
         states=['ON', 'OFF'],
         properties=[PropertyDefinition('revolutions_per_minute', 'Speed', 'rpm', 3000.0,
@@ -423,7 +428,8 @@ BLOCK_TYPES = {
         flow_coefficient_links=[('stopped_orifice_diameter', 'stopped_flow_coefficient',
                                  'stopped_discharge_coefficient')]),
     'thruster': dict(
-        label='Thruster', prefix='TH', size=(120, 80), color='#d35400',
+        label='Thruster', prefix='TH', size=(120, 110),
+        symbol_extent=(21, 21, 34, 52), color='#d35400',   # extent: symbol reach up/down/left/right
         ports={'inlet': (-60, 0, -1, 0)},
         states=['ON', 'OFF'],
         properties=[PropertyDefinition('specific_impulse', 'Specific impulse', 's', 230.0),
@@ -441,7 +447,8 @@ BLOCK_TYPES = {
                     _calculated_property('calculated_nominal_thrust', 'Thrust at nominal inlet pressure', 'N')],
         flow_coefficient_links=[('orifice_diameter', 'flow_coefficient', 'discharge_coefficient')]),
     'orifice': dict(
-        label='Orifice', prefix='OR', size=(120, 80), color='#566573',
+        label='Orifice', prefix='OR', size=(120, 110),
+        symbol_extent=(20, 20, 4, 4), color='#566573',   # extent: symbol reach up/down/left/right
         ports={'inlet': (-60, 0, -1, 0), 'outlet': (60, 0, 1, 0)},
         states=['ON', 'OFF'],
         properties=[PropertyDefinition('orifice_diameter', 'Orifice diameter', 'in', 0.010),
@@ -455,7 +462,8 @@ BLOCK_TYPES = {
                     _calculated_property('calculated_mass_flow', 'Mass flow (inlet→outlet)', 'g/s')],
         flow_coefficient_links=[]),
     'tee': dict(
-        label='Tee', prefix='T', size=(80, 80), color='#5d6d7e',
+        label='Tee', prefix='T', size=(80, 80),
+        symbol_extent=(4, 40, 40, 40), color='#5d6d7e',   # extent: symbol reach up/down/left/right
         ports={'inlet': (-40, 0, -1, 0), 'outlet': (40, 0, 1, 0), 'branch': (0, 40, 0, 1)},
         states=['Open'],                       # fittings are always open: no toggle
         properties=[_tube_property('inlet_tubing_size', 'Inlet tube size'),
@@ -468,7 +476,8 @@ BLOCK_TYPES = {
         flow_coefficient_links=[]),
     'cross': dict(
         # four-way fitting: run inlet -> outlet, branches up and down
-        label='Cross', prefix='X', size=(80, 80), color='#5d6d7e',
+        label='Cross', prefix='X', size=(80, 80),
+        symbol_extent=(40, 40, 40, 40), color='#5d6d7e',   # extent: symbol reach up/down/left/right
         ports={'inlet': (-40, 0, -1, 0), 'outlet': (40, 0, 1, 0),
                'upper_branch': (0, -40, 0, -1), 'lower_branch': (0, 40, 0, 1)},
         states=['Open'],                       # fittings are always open: no toggle
@@ -483,7 +492,8 @@ BLOCK_TYPES = {
                     _calculated_property('calculated_lower_branch_flow', 'Flow out (lower branch)', 'g/s')],
         flow_coefficient_links=[]),
     'elbow': dict(
-        label='90° Fitting', prefix='EL', size=(80, 80), color='#5d6d7e',
+        label='90° Fitting', prefix='EL', size=(80, 80),
+        symbol_extent=(4, 40, 40, 4), color='#5d6d7e',   # extent: symbol reach up/down/left/right
         ports={'inlet': (-40, 0, -1, 0), 'outlet': (0, 40, 0, 1)},
         states=['Open'],                       # fittings are always open: no toggle
         properties=[_tube_property('inlet_tubing_size', 'Inlet tube size'),
@@ -3326,47 +3336,118 @@ class BlockItem(DataLabelVisibility, QGraphicsItem):
             port.setPos(position_x, position_y)
             port.direction = direction
         self.place_side_labels()
-        width, height = self.size()
-        if self.speed_editor is not None:
+
+    # ---- labels inside the block's (invisible) box, close to the symbol ------------
+    LABEL_GAP = 3.0
+    CAPTION_HEIGHT = 13.0
+    SPEED_ROW_ON_WIDTH, SPEED_ROW_UNIT_WIDTH = 16.0, 21.0
+
+    def symbol_extent(self):
+        """How far the symbol reaches up, down, left and right of the centre, after rotation."""
+        up, down, left, right = self.type_information.get('symbol_extent', (20, 20, 20, 20))
+        reach = {}
+        for distance, (direction_x, direction_y) in ((up, (0, -1)), (down, (0, 1)), (left, (-1, 0)), (right, (1, 0))):
+            rotated_x, rotated_y = rotate_vector(direction_x, direction_y, self.orientation)
+            reach[(int(rotated_x), int(rotated_y))] = float(distance)
+        return reach[(0, -1)], reach[(0, 1)], reach[(-1, 0)], reach[(1, 0)]
+
+    def _caption_row_size(self):
+        """(width, height) of the row under the symbol: the pump speed box row, the state
+        caption, or nothing."""
+        if self.speed_editor is not None and self.state == 0:
             editor_rectangle = self.speed_editor.boundingRect()
-            self.speed_editor.setPos(width / 2 - 30 - editor_rectangle.width(),
-                                    height / 2 - editor_rectangle.height() - 4)
+            return (self.SPEED_ROW_ON_WIDTH + editor_rectangle.width() + self.SPEED_ROW_UNIT_WIDTH + 6,
+                    max(editor_rectangle.height(), self.CAPTION_HEIGHT))
+        if has_toggle(self.block_type) and self.block_type != 'tank':
+            return 90.0, self.CAPTION_HEIGHT
+        return 0.0, 0.0
+
+    def label_layout(self):
+        """Centres of the name and result labels, and the caption row (left, top, width,
+        height, alignment), in block coordinates.  Labels sit just outside the symbol,
+        inside the block's box, on sides without ports."""
+        width, height = self.size()
+        gap = self.LABEL_GAP
+        name_rectangle, result_rectangle = self.name_label.boundingRect(), self.result_label.boundingRect()
+        name_width, name_height = name_rectangle.width(), name_rectangle.height()
+        result_width, result_height = result_rectangle.width(), result_rectangle.height()
+        row_width, row_height = self._caption_row_size()
+        up, down, left, right = self.symbol_extent()
+        center_y = (down - up) / 2                 # vertical middle of the symbol
+        used_directions = {tuple(port.direction) for port in self.ports.values()}
+        free = {side for side, direction in (('top', (0, -1)), ('bottom', (0, 1)), ('left', (-1, 0)),
+                                             ('right', (1, 0))) if direction not in used_directions}
+        layout = {'caption': None}
+
+        def left_band(label_width, y):        # right-aligned just left of the symbol
+            return -(left + gap) - label_width / 2, y
+
+        def right_band(label_width, y):       # left-aligned just right of the symbol
+            return right + gap + label_width / 2, y
+
+        if self.block_type == 'tank':
+            # inside the capsule: name, state caption, results stacked down the middle
+            layout['name'] = (0.0, -62.0)
+            layout['result'] = (0.0, 34.0)
+            layout['caption'] = (-80.0, -26.0, 160.0, 24.0, 'center')
+        elif 'top' in free and 'bottom' in free:
+            # name just above the symbol; caption (or pump speed row) and results just below
+            layout['name'] = (0.0, -(up + gap + name_height / 2))
+            row_top = down + gap
+            if row_height:
+                layout['caption'] = (-row_width / 2, row_top, row_width, row_height, 'center')
+                row_top += row_height + gap
+            layout['result'] = (0.0, row_top + result_height / 2)
+        elif 'top' in free or 'bottom' in free:
+            above = 'top' in free
+            sign = -1 if above else 1
+            reach = up if above else down
+            layout['name'] = (0.0, sign * (reach + gap + name_height / 2))
+            if 'right' in free:
+                layout['result'] = right_band(result_width, center_y)
+                if row_height and 'left' in free:
+                    layout['caption'] = (-(left + gap) - row_width, center_y - row_height / 2,
+                                         row_width, row_height, 'right')
+            elif 'left' in free:
+                layout['result'] = left_band(result_width, center_y)
+            else:
+                # e.g. a tee: results between the symbol and the name
+                result_y = sign * (reach + gap + result_height / 2)
+                layout['result'] = (0.0, result_y)
+                layout['name'] = (0.0, result_y + sign * (result_height / 2 + gap + name_height / 2))
+        elif 'left' in free and 'right' in free:
+            # rotated in-line blocks: name and caption left of the symbol, results right of it
+            name_y = center_y - (name_height / 2 + 1 if row_height else 0)
+            layout['name'] = left_band(name_width, name_y)
+            if row_height:
+                layout['caption'] = (-(left + gap) - row_width, name_y + name_height / 2 + 1,
+                                     row_width, row_height, 'right')
+            layout['result'] = right_band(result_width, center_y)
+        elif 'left' in free or 'right' in free:
+            band = left_band if 'left' in free else right_band
+            layout['name'] = band(name_width, center_y - name_height / 2 - 1)
+            layout['result'] = band(result_width, center_y + result_height / 2 + 1)
+        else:
+            # ports on all four edges (cross): name upper-left, results upper-right
+            layout['name'] = (-(2 * gap) - name_width / 2, -(2 * gap) - name_height / 2)
+            layout['result'] = (2 * gap + result_width / 2, -(2 * gap) - result_height / 2)
+        return layout
 
     def place_side_labels(self):
-        """Name above and results below the block, unless a port sits on that edge
-        (e.g. the tank's top inlet / bottom outlet) - then they move to a free side."""
-        width, height = self.size()
-        used_directions = {tuple(port.direction) for port in self.ports.values()}
-        free_sides = [side for side, direction in (('top', (0, -1)), ('bottom', (0, 1)), ('left', (-1, 0)),
-                                                   ('right', (1, 0))) if direction not in used_directions]
+        """Put the name and result labels (and the pump speed box) where label_layout() says."""
         if self.name_label.text != self.name:
             self.name_label.set_text(self.name)
-        name_rectangle = self.name_label.boundingRect()
-        result_rectangle = self.result_label.boundingRect()
-        if not free_sides:
-            # ports on all four edges (cross): name upper-left, results upper-right,
-            # beside the side ports and clear of the vertical branch lines
-            name_side, result_side = 'left', 'right'
-        else:
-            name_side = 'top' if 'top' in free_sides else ('left' if 'left' in free_sides else free_sides[0])
-            if 'bottom' in free_sides:
-                result_side = 'bottom'
-            elif 'right' in free_sides and name_side != 'right':
-                result_side = 'right'
-            else:
-                result_side = name_side
-
-        def position_for(side, rectangle, row):
-            if side == 'top':
-                return 0, -height / 2 - 12 - row * 18
-            if side == 'bottom':
-                return 0, height / 2 + 12 + row * 18
-            if side == 'left':
-                return -width / 2 - 8 - rectangle.width() / 2, -height / 2 + 12 + row * 20
-            return width / 2 + 8 + rectangle.width() / 2, -height / 2 + 12 + row * 20
-        self.name_label.setPos(*position_for(name_side, name_rectangle, 0))
-        self.result_label.setPos(*position_for(result_side, result_rectangle,
-                                               1 if result_side == name_side else 0))
+        layout = self.label_layout()
+        self.name_label.setPos(*layout['name'])
+        self.result_label.setPos(*layout['result'])
+        if self.speed_editor is not None:
+            caption = layout['caption']
+            if caption is not None:
+                row_left, row_top, _, row_height, _ = caption
+                editor_rectangle = self.speed_editor.boundingRect()
+                self.speed_editor.setPos(row_left + self.SPEED_ROW_ON_WIDTH + 3,
+                                         row_top + (row_height - editor_rectangle.height()) / 2)
+        self.update()
 
     def label_rectangles(self):
         """Scene rectangles of the block body and its name/result labels."""
@@ -3481,15 +3562,26 @@ class BlockItem(DataLabelVisibility, QGraphicsItem):
         painter.restore()
         painter.setFont(make_font(7.2))
         painter.setPen(QColor(THEME['cyan_soft']) if active else QColor(THEME['off']))
-        if self.speed_editor is not None and self.speed_editor.isVisible():
-            painter.drawText(QRectF(-width / 2 + 9, height / 2 - 18, width / 2, 14), Qt.AlignmentFlag.AlignLeft, 'ON')
-            painter.drawText(QRectF(width / 2 - 30, height / 2 - 18, 22, 14), Qt.AlignmentFlag.AlignRight, 'rpm')
-        elif self.block_type == 'tank':
-            painter.setFont(make_font(9.0, True))
-            painter.drawText(QRectF(-80, -12, 160, 24), Qt.AlignmentFlag.AlignCenter, self.state_label())
-        elif has_toggle(self.block_type):
-            painter.drawText(QRectF(-width / 2 + 6, height / 2 - 17, width - 12, 13), Qt.AlignmentFlag.AlignCenter,
-                             self.state_label())
+        caption = self.label_layout()['caption']
+        if caption is not None:
+            row_left, row_top, row_width, row_height, alignment = caption
+            if self.speed_editor is not None and self.speed_editor.isVisible():
+                # pump speed row:  ON [rpm box] rpm
+                editor_width = self.speed_editor.boundingRect().width()
+                painter.drawText(QRectF(row_left, row_top, self.SPEED_ROW_ON_WIDTH, row_height),
+                                 Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, 'ON')
+                painter.drawText(QRectF(row_left + self.SPEED_ROW_ON_WIDTH + 6 + editor_width, row_top,
+                                        self.SPEED_ROW_UNIT_WIDTH, row_height),
+                                 Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, 'rpm')
+            elif self.block_type == 'tank':
+                painter.setFont(make_font(9.0, True))
+                painter.drawText(QRectF(row_left, row_top, row_width, row_height), Qt.AlignmentFlag.AlignCenter,
+                                 self.state_label())
+            elif has_toggle(self.block_type):
+                horizontal = {'center': Qt.AlignmentFlag.AlignHCenter, 'right': Qt.AlignmentFlag.AlignRight,
+                              'left': Qt.AlignmentFlag.AlignLeft}[alignment]
+                painter.drawText(QRectF(row_left, row_top, row_width, row_height),
+                                 horizontal | Qt.AlignmentFlag.AlignVCenter, self.state_label())
         if self.warnings:
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(COLOR_WARNING)

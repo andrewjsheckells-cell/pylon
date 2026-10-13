@@ -6,7 +6,7 @@ A PySide6 desktop tool for drawing a spacecraft liquid-propulsion feed-system sc
 
 | | |
 |---|---|
-| Program | `pylon.py` (single file, version 1.12) |
+| Program | `pylon.py` (single file, version 1.13) |
 | Requires | Python ≥ 3.9, `PySide6`, `numpy` |
 | Run | `pip install PySide6 numpy` then `python pylon.py [schematic.pylon.json]` |
 | Solver self-test (no GUI) | `python pylon.py --selftest` |
@@ -32,7 +32,7 @@ The interface uses a dark sci-fi console style taken from the user's reference s
 * **Frames:** every panel sits in a bevelled **gold metallic frame** with rounded corners, angular corner fins and a thin **red inner trim** around a dark navy panel. The panels are the component column, the schematic, System status, Component data, Warnings and Scenarios, plus every dialog.
 * **Headings** are engraved gold capitals with a fading gold rule.
 * **Buttons** are dark plates with gold borders. Dialog accept buttons (OK, Apply) have **green** text and cancel/close buttons have **red** text, like the reference's Start/Cancel.
-* **Components and fittings have no frame or border.** Each is just its glowing cyan symbol on the canvas. The name is engraved in gold above it and the results sit on a plate below it. On an edge that has a port (the tank's top and bottom), the name and results move to a free side so the pipes stay clear. Blocks in an OFF or blocked state show a grey symbol. A selected block gets a soft translucent cyan halo; a block with a warning gets a translucent red halo and a "!" badge. The click/hit area is still the block's full footprint.
+* **Components and fittings have no frame or border.** Each is just its glowing cyan symbol on the canvas. **Labels sit close to the symbol, inside the block's invisible box:** the name just above the symbol, then the state caption (or the pump's RPM row) and the results plate just below it. Where an edge has a port, the labels use a free side instead. The transducer reads beside its gauge; tees stack name and results above the run. An elbow puts its results to its lower right, and a cross puts its name upper-left and results upper-right. On a rotated in-line block the name and state go left of the symbol and the results right of it. The tank shows its name, state and results inside the capsule. Wide result text may extend past the box sideways. Blocks in an OFF or blocked state show a grey symbol. A selected block gets a soft translucent cyan halo; a block with a warning gets a translucent red halo and a "!" badge. The click/hit area is still the block's full footprint.
 * **Pump symbol:** the gear-pump symbol — a casing circle with two touching gear circles and a **V whose point marks the outlet**, so the V shows the flow direction (left to right on an unrotated block; it turns with the block when rotated). The gears are shaded while the pump is ON and the symbol is grey when it is OFF.
 * **Tank:** drawn 4× the earlier size (a 176 × 280 px capsule in a 200 × 400 px footprint), with brass tube stubs from the capsule to the top inlet and the bottom outlet. The fill level shows the state (Nominal / Maximum / Minimum), and the state and pressure are written inside the tank.
 * **Plumbing lines** are drawn as brass pipes (dark outline, gold body, light highlight) with cyan flow arrows, and turn cyan when selected.
@@ -460,11 +460,24 @@ LAYOUT
   "Minimum tank pressure".
 
 BLOCKS
-Each block has a name label above it, a symbol, a state caption and a results label below it. Ports:
+Each block has a symbol, a name label, a state caption and a results label. Ports:
 inlet on the left edge and outlet on the right edge; Tee branch and 90° fitting outlet on the bottom;
-the Tank alone has its inlet on top and its outlet on the bottom. When a port occupies the top or
-bottom edge, the name and results labels (and the rim gem) move to a free side (name left, results
-right). Blocks rotate in 90° steps (ports and symbol rotate; text stays upright).
+the Tank alone has its inlet on top and its outlet on the bottom. Blocks rotate in 90° steps (ports
+and symbol rotate; text stays upright).
+- Label layout (label_layout): every block type has symbol_extent = how far its symbol reaches
+  up/down/left/right (rotated with the block). Labels go just outside that reach, inside the block's
+  box, on sides without ports, 3 px apart:
+  - top and bottom free: name above the symbol; caption (or the pump row "ON [rpm box] rpm") then the
+    results plate below it;
+  - only top (or bottom) free: name there; results in a free left/right band level with the symbol
+    middle, else stacked between the symbol and the name (tee); caption in the left band if free;
+  - left and right free (rotated in-line blocks): name and caption right-aligned left of the symbol,
+    results left-aligned right of it;
+  - one side band free: name and results stacked in it; no side free (cross): name upper-left,
+    results upper-right;
+  - tank: name, state caption and results stacked inside the capsule (y -62, -14, +34).
+  Footprints sized so the stack fits: latch valve 120x100, flowmeter 120x100, filter, orifice and
+  thruster 120x110, pump 120x120; side ports unchanged.
 - Clicking the centre zone toggles the state. Tees, crosses and 90° fittings have a single "Open" state and no
   toggle (no click toggle, no state caption, no State menu or field); stored states are clamped with
   normalized_state(), so older files with a tee/fitting OFF load as open. has_toggle(type) is true
@@ -663,3 +676,4 @@ CODE CONVENTIONS
 | 1.10 | 2026-10-13 | Pump icon changed to the gear-pump symbol (casing with two meshing spur gears) on the schematic and in the component column. |
 | 1.11 | 2026-10-13 | Pump icon changed to the user's gear-pump symbol: casing circle, two touching gear circles and a V pointing to the outlet to show the flow direction. |
 | 1.12 | 2026-10-13 | Cross fitting added: four ports (inlet, outlet, upper and lower branches), tube sizes per port, tee-based Crane/two-K arm losses, per-port flows; no toggle. Blocks with ports on all four edges place their name upper-left and results upper-right. Self-test check added. |
+| 1.13 | 2026-10-13 | Labels moved close to their components, inside each block's invisible box: name just above the symbol, state caption / pump RPM row and results just below, or on a free side where an edge has a port. Tank labels sit inside the capsule. Latch valve, flowmeter, filter, orifice, thruster and pump footprints made taller so the labels fit; side port positions unchanged. |
