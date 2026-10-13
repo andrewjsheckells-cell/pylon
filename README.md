@@ -29,6 +29,7 @@
   - Rotate left/right.
   - Show or hide all flow/pressure data: hover to reveal it, or right-click to set it per item.
   - PNG export.
+- **Error log.** Errors and warnings are written to `Logs/pylon.log`, and unexpected errors open a dialog with the details. *Help → Generate error report…* saves one text file with the errors, current warnings, recent log and, optionally, the schematic.
 
 ## Physics basis
 
@@ -47,6 +48,7 @@ pip install -r requirements.txt        # PySide6 and numpy
 python pylon.py                        # opens the built-in example system
 python pylon.py my_system.pylon.json   # open a saved schematic
 python pylon.py --selftest             # physics and solver checks, no GUI needed
+python pylon.py --debug                # also log every solve to Logs/pylon.log
 ```
 
 Python 3.9 or newer is required. To try the pump-curve import, right-click a pump → *Pump curves…* → *Import CSV…* and choose `examples/example_pump_curves.csv`.
@@ -68,4 +70,4 @@ Python 3.9 or newer is required. To try the pump-curve import, right-click a pum
 
 ## Status
 
-Version 1.16. The solver passes its built-in self-test (`--selftest`), which covers closed-form orifice flow, Hagen–Poiseuille, Colebrook, the Cv relation, mass balances, orifice sizing, pump-curve interpolation and file upgrades. Verify the loss-coefficient defaults against your own hardware data before relying on results for design decisions.
+Version 1.17. The solver passes its built-in self-test (`--selftest`), which covers closed-form orifice flow, Hagen–Poiseuille, Colebrook, the Cv relation, mass balances, orifice sizing, pump-curve interpolation and file upgrades. Verify the loss-coefficient defaults against your own hardware data before relying on results for design decisions.

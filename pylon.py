@@ -70,21 +70,34 @@ References
 """
 from __future__ import annotations
 
+import collections
 import copy
 import csv
+import datetime
+import faulthandler
 import heapq
+import html
 import json
+import logging
+import logging.handlers
 import math
 import os
+import platform
 import re
 import sys
+import threading
+import traceback
 import uuid
 
 import numpy
 
 APPLICATION_NAME = "Pylon"
-APPLICATION_VERSION = "1.16"
+APPLICATION_VERSION = "1.17"
 FILE_FORMAT_VERSION = 3
+
+# Program log (errors and warnings).  Silent until the GUI attaches its handlers (see ErrorLog).
+LOGGER = logging.getLogger('pylon')
+LOGGER.addHandler(logging.NullHandler())
 
 # =============================================================================
 # Units and constants  [NIST811]
@@ -983,6 +996,69 @@ def parse_pump_curve_csv(path, density, ask_revolutions_per_minute=None):
     if not curves:
         raise ValueError("No numeric data rows found.")
     return curves
+
+
+# =============================================================================
+# Error reports
+# =============================================================================
+def named_warnings(model, warnings):
+    """Solver and component warnings as 'NAME: text' lines, with block and line names
+    in place of identifiers ('System' for warnings that belong to no item)."""
+    names = {block.get('identifier'): block.get('name') or block.get('identifier')
+             for block in (model or {}).get('blocks', [])}
+    names.update({line.get('identifier'): line.get('name') or line.get('identifier')
+                  for line in (model or {}).get('lines', [])})
+    return [f"{names.get(identifier, identifier) if identifier else 'System'}: {text}"
+            for identifier, text in (warnings or [])]
+
+
+def environment_summary(extra=None):
+    """(label, value) pairs describing the program and the computer, for logs and reports."""
+    rows = [('Pylon', f"{APPLICATION_VERSION} ({os.path.abspath(__file__)})"),
+            ('Python', f"{platform.python_version()} ({platform.python_implementation()}, {sys.executable})"),
+            ('numpy', numpy.__version__),
+            ('Operating system', f"{platform.platform()} ({platform.machine()})")]
+    return rows + list(extra or [])
+
+
+def format_error_report(environment, note='', results=None, model=None, log_lines=(), errors=(),
+                        include_schematic=True, generated=None):
+    """Plain-text error report: what the user saw, the program and computer, the errors
+    recorded this session, the solver status with every warning, the recent log, and
+    (optionally) the schematic as JSON so the problem can be reproduced."""
+    generated = generated or datetime.datetime.now().astimezone()
+
+    def section(title):
+        return ['', title, '-' * len(title)]
+    lines = [f"{APPLICATION_NAME.upper()} ERROR REPORT", '=' * (len(APPLICATION_NAME) + 13),
+             f"Generated {generated.strftime('%Y-%m-%d %H:%M:%S %z')}"]
+    lines += section('What happened')
+    lines += [note.strip() if note and note.strip() else '(no description given)']
+    lines += section('Environment')
+    width = max([len(label) for label, _ in environment] + [0])
+    lines += [f"{label.ljust(width)}  {value}" for label, value in environment]
+    lines += section(f"Errors this session ({len(errors)})")
+    if errors:
+        for error in errors:
+            lines += [f"[{error.get('time', '')}] {error.get('summary', '')}"]
+            lines += ['    ' + text for text in str(error.get('details', '')).rstrip().splitlines()]
+    else:
+        lines += ['None recorded.']
+    lines += section('Solver')
+    if results is None:
+        lines += ['No solution yet.']
+    else:
+        lines += [f"Status: {results.get('message', '')}"
+                  + ('' if results.get('converged') else ' (NOT CONVERGED)')]
+        warning_lines = named_warnings(model, results.get('warnings'))
+        lines += [f"Warnings ({len(warning_lines)}):" if warning_lines else 'Warnings: none.']
+        lines += [f"  - {text}" for text in warning_lines]
+    lines += section(f"Recent log ({len(log_lines)} entries)")
+    lines += list(log_lines) or ['(empty)']
+    if include_schematic and model is not None:
+        lines += section('Schematic (pylon_schematic JSON; save as .pylon.json to reopen)')
+        lines += [json.dumps(model, indent=1, sort_keys=True, default=str)]
+    return '\n'.join(lines) + '\n'
 
 
 # =============================================================================
@@ -2869,6 +2945,21 @@ def run_self_test():
     print(f"  [{'PASS' if naming_ok else 'FAIL'}] copy names increment the last number "
           f"({', '.join(f'{original} -> {incremented_name(original, taken)}' for original, _ in naming_cases)})")
     all_passed &= naming_ok
+    print("Error report")
+    report_model = build_example_model()
+    report_results = solve_model(report_model)
+    report_results['warnings'].append((report_model['blocks'][0]['identifier'], 'test warning'))
+    report = format_error_report(environment_summary([('Qt', 'test')]), 'Solver stopped', report_results,
+                                 report_model, ['12:00:00 WARNING  test log line'],
+                                 [{'time': '12:00:01', 'summary': 'ValueError: test', 'details': 'Traceback ...'}])
+    schematic_text = report.split('save as .pylon.json to reopen)\n', 1)[1].split('\n', 1)[1]
+    report_ok = (all(heading in report for heading in ('What happened', 'Environment', 'Errors this session (1)',
+                                                       'Solver', 'Recent log (1 entries)'))
+                 and f"{report_model['blocks'][0]['name']}: test warning" in report
+                 and json.loads(schematic_text) == json.loads(json.dumps(report_model, sort_keys=True, default=str)))
+    print(f"  [{'PASS' if report_ok else 'FAIL'}] error report has every section, named warnings and a "
+          f"reloadable schematic")
+    all_passed &= report_ok
     print('ALL PASSED' if all_passed else 'SOME CHECKS FAILED')
     return 0 if all_passed else 1
 
@@ -2881,12 +2972,13 @@ if __name__ == '__main__' and '--selftest' in sys.argv:
 # GUI (PySide6)
 # =============================================================================
 try:
-    from PySide6.QtCore import QMimeData, QPointF, QRectF, Qt, QTimer, Signal
-    from PySide6.QtGui import (QAction, QActionGroup, QBrush, QColor, QDrag, QFont,
+    from PySide6.QtCore import (QMimeData, QPointF, QRectF, Qt, QtMsgType, QTimer, QUrl, Signal,
+                                qInstallMessageHandler)
+    from PySide6.QtGui import (QAction, QActionGroup, QBrush, QColor, QDesktopServices, QDrag, QFont,
                                QFontMetricsF, QImage, QKeySequence, QLinearGradient, QPainter,
                                QPainterPath, QPainterPathStroker, QPalette, QPen, QPixmap,
                                QPolygonF)
-    from PySide6.QtWidgets import (QAbstractItemView, QAbstractSpinBox, QApplication, QComboBox, QDialog,
+    from PySide6.QtWidgets import (QAbstractItemView, QAbstractSpinBox, QApplication, QCheckBox, QComboBox, QDialog,
                                    QDialogButtonBox, QDockWidget, QFileDialog, QFormLayout,
                                    QFrame, QGraphicsItem, QGraphicsPathItem, QGraphicsScene,
                                    QGraphicsTextItem, QGraphicsView, QGraphicsEllipseItem,
@@ -2905,6 +2997,7 @@ except ImportError:
 
 SCRIPT_DIRECTORY = os.path.dirname(os.path.abspath(__file__))
 BLOCK_DIRECTORY = os.path.join(SCRIPT_DIRECTORY, 'Component Blocks')
+LOG_DIRECTORY = os.path.join(SCRIPT_DIRECTORY, 'Logs')
 BLOCK_MIME_TYPE = 'application/x-pylon-block'
 
 # -----------------------------------------------------------------------------
@@ -6167,8 +6260,10 @@ class PumpCurveDialog(BezelDialog):
             try:
                 imported = parse_pump_curve_csv(path, self.density, ask_speed)
             except (OSError, ValueError) as error:
+                LOGGER.warning("Pump curve import failed for %s: %s", path, error)
                 QMessageBox.warning(self, "Import failed", f"{os.path.basename(path)}:\n{error}")
                 continue
+            LOGGER.info("Imported pump curves %s rpm from %s", ', '.join(sorted(imported, key=float)), path)
             self.pump_curves.update(imported)
             last_imported_speed = sorted(imported, key=float)[-1]
         if last_imported_speed:
@@ -6824,6 +6919,10 @@ right-click → <b>Combine</b>.</p>
 direction); block results beside each block. Middle-drag pans, wheel zooms, F fits.</p>
 <p><b>Analysis</b> — Scenarios tab stores toggle states and properties. Analysis → Size bypass
 orifice… and Find lowest pump RPM… work on the current state and/or any saved scenarios.</p>
+<p><b>Error log</b> — errors and warnings are written to <i>Logs/pylon.log</i> next to the program.
+An unexpected error opens a dialog with its details. Help → <b>Generate error report…</b>
+(Ctrl+Shift+E) saves a text report (errors, current warnings, recent log and, optionally, the
+schematic) to send with a problem; Help → Open log folder shows the logs.</p>
 """
 
 
@@ -6834,6 +6933,8 @@ class MainWindow(QMainWindow):
         self.file_path = None
         self.modified = False
         self._initial_guess = None
+        self.last_results, self.last_model = None, None
+        self._logged_warnings, self._logged_solver_message = set(), None
         self._clipboard = None
         self._paste_count = 0
         self._history = []
@@ -6977,6 +7078,10 @@ class MainWindow(QMainWindow):
         help_menu = menu_bar.addMenu("&Help")
         help_menu.addAction(self._make_action(
             "Quick guide", lambda: QMessageBox.information(self, "Quick guide", HELP_TEXT), "F1"))
+        help_menu.addSeparator()
+        help_menu.addAction(self._make_action("Generate error report…", self.generate_error_report, "Ctrl+Shift+E"))
+        help_menu.addAction(self._make_action("Open log folder", ERROR_LOG.open_folder))
+        help_menu.addSeparator()
         help_menu.addAction(self._make_action("About", lambda: QMessageBox.about(
             self, "About", f"<b>{APPLICATION_NAME}</b> {APPLICATION_VERSION}<br>Steady incompressible "
                            "flow-network solver for spacecraft propulsion feed systems.")))
@@ -7025,22 +7130,70 @@ class MainWindow(QMainWindow):
             if not results['converged'] and self._initial_guess is not None:
                 results = solve_model(model)
         except Exception as error:  # keep the editor alive whatever the network looks like
-            import traceback
-            traceback.print_exc()
-            self.statusBar().showMessage(f"Solver error: {error}", 10000)
+            ERROR_LOG.record_error(f"Solver error: {type(error).__name__}: {error}", traceback.format_exc())
+            self.statusBar().showMessage(f"Solver error: {error} (logged; Help → Generate error report…)", 10000)
             return
         self._initial_guess = results['initial_guess'] if results['converged'] else None
+        self._log_solution(model, results)
         self.scene.apply_results(results)
         self.results_panel.show_results(results)
         warning_count = len(results['warnings'])
         self.statusBar().showMessage(f"{results['message']}"
                                      + (f" · {warning_count} warning(s)" if warning_count else ''), 6000)
 
+    def _log_solution(self, model, results):
+        """Log solver trouble and every warning when it appears or clears (not on every solve)."""
+        self.last_results, self.last_model = results, model
+        LOGGER.debug("Solved: %s", results['message'])
+        if not results['converged'] and results['message'] != self._logged_solver_message:
+            LOGGER.warning("Solver did not converge: %s", results['message'])
+        elif results['converged'] and self._logged_solver_message is not None:
+            LOGGER.info("Solver converged again: %s", results['message'])
+        self._logged_solver_message = None if results['converged'] else results['message']
+        current = named_warnings(model, results['warnings'])
+        current_set = set(current)
+        for text in current:
+            if text not in self._logged_warnings:
+                LOGGER.warning("Warning: %s", text)
+        for text in sorted(self._logged_warnings - current_set):
+            LOGGER.info("Warning cleared: %s", text)
+        self._logged_warnings = current_set
+
+    def generate_error_report(self):
+        """Help → Generate error report…: write a text report to send with a problem."""
+        model = self.scene.to_model()
+        results = self.last_results
+        dialog = ErrorReportDialog(self, ERROR_LOG, len(results['warnings']) if results else 0)
+        if not dialog.exec():
+            return None
+        stamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        default_path = os.path.join(ERROR_LOG.directory or SCRIPT_DIRECTORY, f"pylon_error_report_{stamp}.txt")
+        path, _ = QFileDialog.getSaveFileName(self, "Save error report", default_path, "Text files (*.txt)")
+        if not path:
+            return None
+        environment = ERROR_LOG.environment() + [
+            ('Schematic file', f"{self.file_path or 'Untitled'}{' (unsaved changes)' if self.modified else ''}"),
+            ('Log file', ERROR_LOG.path or 'memory only')]
+        report = format_error_report(environment, dialog.note_editor.toPlainText(), results, model,
+                                     ERROR_LOG.recent_lines(), ERROR_LOG.errors,
+                                     include_schematic=dialog.schematic_box.isChecked())
+        try:
+            with open(path, 'w', encoding='utf-8') as file_handle:
+                file_handle.write(report)
+        except OSError as error:
+            ERROR_LOG.record_error(f"Could not write error report {path}: {error}")
+            QMessageBox.warning(self, "Error report", f"Could not write {path}:\n{error}")
+            return None
+        LOGGER.info("Error report written to %s", path)
+        self.statusBar().showMessage(f"Error report saved to {path}", 8000)
+        return path
+
     def load_model(self, model, path):
         self.scene.load_model(model)
         self.labels_action.setChecked(self.scene.show_labels)
         self.file_path = path
         self._initial_guess = None
+        self._logged_warnings, self._logged_solver_message = set(), None
         self.scenario_panel.refresh()
         self.solve_now()
         self.modified = False
@@ -7092,6 +7245,7 @@ class MainWindow(QMainWindow):
             with open(path, 'w', encoding='utf-8') as file_handle:
                 json.dump(template, file_handle, indent=2)
         except OSError as error:
+            ERROR_LOG.record_error(f"Could not write {path}: {error}")
             QMessageBox.warning(self, title, str(error))
             return None
         self.block_palette.refresh()
@@ -7431,8 +7585,10 @@ class MainWindow(QMainWindow):
             with open(path, encoding='utf-8') as file_handle:
                 model = json.load(file_handle)
         except (OSError, ValueError) as error:
+            ERROR_LOG.record_error(f"Could not open {path}: {error}")
             QMessageBox.warning(self, "Open", f"Could not open {path}:\n{error}")
             return
+        LOGGER.info("Opened %s", path)
         self.load_model(model, path)
 
     def save(self):
@@ -7442,8 +7598,10 @@ class MainWindow(QMainWindow):
             with open(self.file_path, 'w', encoding='utf-8') as file_handle:
                 json.dump(self.scene.to_model(), file_handle, indent=1)
         except OSError as error:
+            ERROR_LOG.record_error(f"Could not save {self.file_path}: {error}")
             QMessageBox.warning(self, "Save", str(error))
             return False
+        LOGGER.info("Saved %s", self.file_path)
         self.set_modified(False)
         self.statusBar().showMessage(f"Saved {self.file_path}", 5000)
         return True
@@ -7474,7 +7632,11 @@ class MainWindow(QMainWindow):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.scene.render(painter, QRectF(image.rect()), bounds)
         painter.end()
-        image.save(path)
+        if not image.save(path):
+            ERROR_LOG.record_error(f"Could not export image {path}")
+            QMessageBox.warning(self, "Export image", f"Could not write {path}.")
+            return
+        LOGGER.info("Exported image %s", path)
         self.statusBar().showMessage(f"Exported {path}", 6000)
 
     def closeEvent(self, event):
@@ -7484,14 +7646,220 @@ class MainWindow(QMainWindow):
             event.ignore()
 
 
+# =============================================================================
+# Error and warning log
+# =============================================================================
+class _MemoryLogHandler(logging.Handler):
+    """Keeps the most recent formatted log records for error reports."""
+
+    def __init__(self, capacity):
+        super().__init__()
+        self.lines = collections.deque(maxlen=capacity)
+
+    def emit(self, record):
+        try:
+            self.lines.append(self.format(record))
+        except Exception:
+            self.handleError(record)
+
+
+class ErrorLog:
+    """The program's error and warning log.
+
+    * Log file Logs/pylon.log next to the script (or ~/.pylon/Logs if that folder can't be
+      written), rotated at 1 MB with 5 old files kept; the last 1000 entries are also kept
+      in memory for error reports.
+    * Records: session start (program, Python, Qt and OS versions), files opened and saved,
+      solver non-convergence, every component / solver warning when it appears and when it
+      clears, failed file operations and imports, Qt warnings, Python warnings, and every
+      unhandled error with its traceback.  --debug also records every solve.
+    * Unhandled errors open an error dialog instead of failing silently; hard crashes
+      (e.g. inside Qt) are written to Logs/crash.log by faulthandler."""
+
+    MEMORY_ENTRIES = 1000
+    LOG_FORMAT = '%(asctime)s  %(levelname)-8s %(message)s'
+
+    def __init__(self):
+        self.directory = None
+        self.path = None
+        self.errors = []                       # unhandled / recorded errors this session
+        self.memory = _MemoryLogHandler(self.MEMORY_ENTRIES)
+        self.memory.setFormatter(logging.Formatter(self.LOG_FORMAT, '%H:%M:%S'))
+        self.main_window = None
+        self._showing_dialog = False
+        self._crash_file = None
+        self.installed = False
+
+    def install(self, level=logging.INFO):
+        if self.installed:
+            return
+        self.installed = True
+        LOGGER.setLevel(level)
+        LOGGER.propagate = False
+        LOGGER.addHandler(self.memory)
+        console = logging.StreamHandler(sys.stderr)
+        console.setLevel(logging.WARNING)
+        console.setFormatter(logging.Formatter('Pylon %(levelname)s: %(message)s'))
+        LOGGER.addHandler(console)
+        for candidate in (LOG_DIRECTORY, os.path.join(os.path.expanduser('~'), '.pylon', 'Logs')):
+            try:
+                os.makedirs(candidate, exist_ok=True)
+                file_handler = logging.handlers.RotatingFileHandler(
+                    os.path.join(candidate, 'pylon.log'), maxBytes=1_000_000, backupCount=5, encoding='utf-8')
+            except OSError:
+                continue
+            file_handler.setFormatter(logging.Formatter(self.LOG_FORMAT))
+            LOGGER.addHandler(file_handler)
+            self.directory, self.path = candidate, file_handler.baseFilename
+            break
+        logging.captureWarnings(True)          # Python warnings -> the same log
+        python_warnings = logging.getLogger('py.warnings')
+        python_warnings.propagate = False
+        for handler in LOGGER.handlers:
+            python_warnings.addHandler(handler)
+        if self.directory:
+            try:
+                self._crash_file = open(os.path.join(self.directory, 'crash.log'), 'a', encoding='utf-8')
+                self._crash_file.write(f"\n--- {APPLICATION_NAME} {APPLICATION_VERSION} session "
+                                       f"{datetime.datetime.now().astimezone():%Y-%m-%d %H:%M:%S %z} ---\n")
+                self._crash_file.flush()
+                faulthandler.enable(file=self._crash_file)
+            except (OSError, RuntimeError, ValueError):
+                self._crash_file = None
+        sys.excepthook = self.handle_exception
+        threading.excepthook = lambda arguments: self.handle_exception(
+            arguments.exc_type, arguments.exc_value, arguments.exc_traceback)
+        qInstallMessageHandler(self.handle_qt_message)
+        LOGGER.info("=== %s %s session started ===", APPLICATION_NAME, APPLICATION_VERSION)
+        for label, value in self.environment():
+            LOGGER.info("%s: %s", label, value)
+        if not self.path:
+            LOGGER.warning("No writable log folder; the log is kept in memory only (Help → Generate error report…)")
+
+    @staticmethod
+    def environment():
+        try:
+            import PySide6
+            from PySide6.QtCore import qVersion
+            qt_versions = [('PySide6 / Qt', f"{PySide6.__version__} / {qVersion()}")]
+        except Exception:
+            qt_versions = []
+        return environment_summary(qt_versions)
+
+    def record_error(self, summary, details=''):
+        """Log an error and keep it for the error report."""
+        self.errors.append({'time': datetime.datetime.now().strftime('%H:%M:%S'),
+                            'summary': summary, 'details': details})
+        LOGGER.error("%s%s", summary, ('\n' + details.rstrip()) if details else '')
+
+    def handle_exception(self, exception_type, exception_value, exception_traceback):
+        if issubclass(exception_type, KeyboardInterrupt):
+            sys.__excepthook__(exception_type, exception_value, exception_traceback)
+            return
+        details = ''.join(traceback.format_exception(exception_type, exception_value, exception_traceback))
+        summary = f"Unhandled error: {exception_type.__name__}: {exception_value}"
+        self.errors.append({'time': datetime.datetime.now().strftime('%H:%M:%S'),
+                            'summary': summary, 'details': details})
+        LOGGER.critical("%s\n%s", summary, details.rstrip())
+        if self._showing_dialog or QApplication.instance() is None:
+            return
+        self._showing_dialog = True
+        try:
+            ErrorDialog(self.main_window, self, summary, details).exec()
+        except Exception:
+            sys.__excepthook__(exception_type, exception_value, exception_traceback)
+        finally:
+            self._showing_dialog = False
+
+    def handle_qt_message(self, message_type, context, message):
+        level = {QtMsgType.QtDebugMsg: logging.DEBUG, QtMsgType.QtInfoMsg: logging.DEBUG,
+                 QtMsgType.QtWarningMsg: logging.WARNING, QtMsgType.QtCriticalMsg: logging.ERROR,
+                 QtMsgType.QtFatalMsg: logging.CRITICAL}.get(message_type, logging.WARNING)
+        LOGGER.log(level, "Qt: %s", message)
+
+    def recent_lines(self):
+        return list(self.memory.lines)
+
+    def open_folder(self):
+        if self.directory:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(self.directory))
+
+
+ERROR_LOG = ErrorLog()
+
+
+class ErrorDialog(BezelDialog):
+    """Shown for an unhandled error: what happened, where it was logged, and the traceback."""
+
+    def __init__(self, main_window, error_log, summary, details):
+        super().__init__(main_window)
+        self.main_window, self.error_log, self.details = main_window, error_log, details
+        self.setWindowTitle("Error")
+        self.resize(640, 420)
+        layout = QVBoxLayout(self)
+        message = QLabel(f"<b>{html.escape(summary)}</b><br><br>{APPLICATION_NAME} caught this error and kept "
+                         "running. If the schematic looks wrong, save it under a new name before continuing."
+                         + (f"<br><br>Logged to {html.escape(error_log.path)}" if error_log.path else ''))
+        message.setWordWrap(True)
+        layout.addWidget(message)
+        details_view = QPlainTextEdit(details)
+        details_view.setReadOnly(True)
+        layout.addWidget(details_view, 1)
+        buttons = QHBoxLayout()
+        for text, slot in (("Save error report…", self._save_report), ("Copy details", self._copy),
+                           ("Open log folder", error_log.open_folder), ("Close", self.accept)):
+            button = QPushButton(text)
+            button.clicked.connect(slot)
+            buttons.addWidget(button)
+        layout.addLayout(buttons)
+
+    def _copy(self):
+        QApplication.clipboard().setText(self.details)
+
+    def _save_report(self):
+        if self.main_window is not None:
+            self.main_window.generate_error_report()
+
+
+class ErrorReportDialog(BezelDialog):
+    """Help → Generate error report…: an optional description and what to include."""
+
+    def __init__(self, parent, error_log, warning_count):
+        super().__init__(parent)
+        self.setWindowTitle("Generate error report")
+        self.resize(560, 380)
+        layout = QVBoxLayout(self)
+        intro = QLabel(f"The report is a text file with the program and computer details, "
+                       f"{len(error_log.errors)} error(s) recorded this session, the solver status and "
+                       f"its {warning_count} current warning(s), and the last {len(error_log.recent_lines())} "
+                       "log entries.")
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+        layout.addWidget(QLabel("What were you doing, and what went wrong? (optional)"))
+        self.note_editor = QPlainTextEdit()
+        layout.addWidget(self.note_editor, 1)
+        self.schematic_box = QCheckBox("Include the current schematic (so the problem can be reproduced)")
+        self.schematic_box.setChecked(True)
+        layout.addWidget(self.schematic_box)
+        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+        accent_buttons(button_box)
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
+
+
 def main():
+    ERROR_LOG.install(logging.DEBUG if '--debug' in sys.argv else logging.INFO)
     application = QApplication(sys.argv)
     application.setApplicationName(APPLICATION_NAME)
     apply_application_theme(application)
     arguments = [argument for argument in sys.argv[1:] if not argument.startswith('-')]
     window = MainWindow(arguments[0] if arguments else None)
+    ERROR_LOG.main_window = window
     window.show()
-    sys.exit(application.exec())
+    exit_code = application.exec()
+    LOGGER.info("=== session ended (exit code %s) ===", exit_code)
+    sys.exit(exit_code)
 
 
 if __name__ == '__main__':

@@ -6,11 +6,12 @@ A PySide6 desktop tool for drawing a spacecraft liquid-propulsion feed-system sc
 
 | | |
 |---|---|
-| Program | `pylon.py` (single file, version 1.16) |
+| Program | `pylon.py` (single file, version 1.17) |
 | Requires | Python ≥ 3.9, `PySide6`, `numpy` |
 | Run | `pip install PySide6 numpy` then `python pylon.py [schematic.pylon.json]` |
 | Solver self-test (no GUI) | `python pylon.py --selftest` |
 | Saved blocks | `Component Blocks/` folder next to the script (created on first save) |
+| Error log | `Logs/pylon.log` next to the script (or `~/.pylon/Logs/` if that folder can't be written); `python pylon.py --debug` also logs every solve |
 | Example data | `examples/example_pump_curves.csv` (synthetic gear-pump curves for the import test) |
 | Repository | <https://github.com/andrewjsheckells-cell/pylon> · project page <https://andrewjsheckells-cell.github.io/pylon/> |
 
@@ -131,6 +132,24 @@ Blocks added after a scenario was saved keep their current values when it is app
 * *File → Save / Open* writes or reads a schematic as JSON (`*.pylon.json`; older `*.prop.json` files still open). See §6.
 * *File → Export image (PNG)…* renders the whole schematic at 2× resolution.
 * *File → Open example* reloads the built-in example.
+
+### 2.6 Error log and error reports
+* **Log file.** Every session appends to `Logs/pylon.log` next to `pylon.py`; if that folder can't be written, `~/.pylon/Logs/` is used. The file rolls over at 1 MB and the 5 most recent old files are kept (`pylon.log.1` … `pylon.log.5`). Warnings and errors are also printed to the terminal, if Pylon was started from one.
+* **What is logged:**
+  * session start, with the Pylon, Python, PySide6/Qt and numpy versions and the operating system;
+  * files opened and saved, images exported, pump curves imported;
+  * **warnings:** every component or solver warning (pressure above a limit, pump outside its curves or limits, thruster inlet above maximum, COPV warnings, …) is logged as `Warning: <name>: <text>` when it first appears, and `Warning cleared: …` when it goes away. Warnings are not repeated on every auto-solve. A solve that does not converge is logged once, along with when it converges again. Qt warnings and Python warnings are logged too;
+  * **errors:** files that can't be opened or written, failed curve imports, solver exceptions, and every unhandled error with its full traceback.
+* **Unexpected errors** open an *Error* dialog instead of failing silently. The dialog shows the error and traceback and where it was logged, with *Save error report…*, *Copy details*, *Open log folder* and *Close*. Pylon keeps running; if the schematic looks wrong afterwards, save it under a new name. A hard crash inside Qt is written to `Logs/crash.log`.
+* **Help → Generate error report… (Ctrl+Shift+E)** asks what you were doing (optional) and whether to include the schematic, then saves a text file (`pylon_error_report_<date>_<time>.txt`, in the log folder by default). Its sections are:
+  * the description;
+  * the environment, including the schematic file name and whether it has unsaved changes;
+  * every error recorded this session, with tracebacks;
+  * the solver status with **every current warning**, by component name;
+  * the last 1000 log entries;
+  * optionally, the schematic as JSON (save that part as `.pylon.json` to reopen it).
+* **Help → Open log folder** opens the log folder in the file browser.
+* **`python pylon.py --debug`** also logs every solve.
 
 ## 3. Components
 
@@ -290,6 +309,7 @@ For an orifice in parallel with the pump (one side on the pump-outlet manifold, 
 * that an open fluid coupling in series with a thruster passes the series equivalent-orifice flow;
 * that a fill & drain valve on a tank outlet passes no flow and reads the tank pressure, and that a line attached to a v1.15 fill & drain valve outlet is freed on load;
 * that copy names increment the last number (with zero padding), add " 1" when there is none, and skip names in use;
+* that an error report contains every section, the warnings by component name, and a schematic that reloads exactly;
 * that a pump at a speed between two stored curves interpolates correctly (3500 rpm between 3000 and 4000 rpm gear-pump curves gives 396 mL/min at 200 psid), and that a speed outside the stored curves is reported.
 
 ## 6. File formats
@@ -487,7 +507,8 @@ LAYOUT
   Toolbar: Undo, Redo | Select/Move, Draw Line, ⟲ Rotate left, Rotate right ⟳ | Show flow / pressure
   data (checkable) | Solve, Auto-solve, Fit | Fluid…, Size Orifice…, Lowest RPM…;
   Analysis (Solve F5, Auto-solve toggle, Size bypass orifice…, Find lowest pump RPM…,
-  Fluid and loss coefficients…); Help.
+  Fluid and loss coefficients…); Help (Quick guide F1, Generate error report… Ctrl+Shift+E, Open log
+  folder, About).
 - Starts with a built-in example: tank (above the line, bottom outlet) → filter → latch valve → tee → pump → tee → flowmeter →
   thruster, a bypass orifice from the pump-outlet tee branch back to the pump-inlet tee branch,
   transducers tapped onto the valve-outlet and pump-outlet lines, synthetic pump curves at
@@ -718,7 +739,32 @@ FILES
   port's current position is re-routed (older files).
 - File > Export PNG.
 - --selftest runs the physics, network and routing checks without importing PySide6.
-- Saving a block creates the Component Blocks folder on first use.
+- Saving a block creates the Component Blocks folder on first use; the Logs folder is created at
+  start-up.
+
+ERROR LOG
+- logging.getLogger('pylon') (NullHandler until the GUI starts, so --selftest stays quiet).
+  ErrorLog.install(level) in main(): RotatingFileHandler Logs/pylon.log next to the script (fallback
+  ~/.pylon/Logs; 1 MB x 5), an in-memory handler keeping the last 1000 formatted lines, stderr for
+  WARNING+, logging.captureWarnings (py.warnings to the same handlers), faulthandler to
+  Logs/crash.log, sys.excepthook and threading.excepthook, qInstallMessageHandler (Qt debug/info ->
+  DEBUG, warning -> WARNING, critical -> ERROR, fatal -> CRITICAL). Session start logs
+  environment_summary() (Pylon, Python, numpy, OS) plus PySide6/Qt versions. --debug = DEBUG level
+  (logs every solve); default INFO.
+- After each solve: log "Solver did not converge: <message>" once (and "Solver converged again"),
+  and diff named_warnings(model, results['warnings']) ("NAME: text") against the previous set:
+  new ones at WARNING "Warning: …", removed ones at INFO "Warning cleared: …". Reset on open.
+- record_error(summary, details) logs at ERROR and keeps the error for reports: open/save/export/
+  library-write failures and solver exceptions (with traceback). Pump-curve import failures WARNING.
+- Unhandled exceptions: log CRITICAL with traceback, keep for reports, show ErrorDialog (summary,
+  log path, read-only traceback, buttons Save error report…, Copy details, Open log folder,
+  Close); re-entrancy guarded; the program keeps running.
+- Help → Generate error report… (Ctrl+Shift+E): ErrorReportDialog (optional description, "Include
+  the current schematic" checked), then save pylon_error_report_YYYYMMDD_HHMMSS.txt (default in the
+  log folder). format_error_report(environment, note, results, model, log_lines, errors,
+  include_schematic) writes sections: What happened; Environment (+ schematic file, unsaved
+  changes, log file); Errors this session; Solver (status, NOT CONVERGED flag, every warning by
+  name); Recent log; Schematic JSON (sorted keys).
 
 CODE CONVENTIONS
 - No abbreviated identifiers: variables, functions, classes, attributes and dictionary keys use full
@@ -753,3 +799,4 @@ CODE CONVENTIONS
 | 1.14 | 2026-10-13 | Copied or duplicated blocks are named from the original: the last number in the name + 1 (LV-1 → LV-2), or " 1" added when there is no number, counting on past names in use. Self-test check added. |
 | 1.15 | 2026-10-13 | New blocks: **COPV** (pressurant bottle; while backfilling it holds a connected tank's ullage at its regulated setpoint or bottle pressure, through open lines and components), **Fluid Coupling** (open with an equivalent-orifice flow restriction, or closed) and **Fill & Drain Valve** (symbolic; each side is a dead end). **Assemblies:** save a selection of connected parts and their tubes as a named group, lock it to move and select it as one block or unlock it to modify the parts, save it to the library and place copies. Self-test checks added. |
 | 1.16 | 2026-10-13 | Fill & drain valve has a single connection point (left), drawn with a cap on its service side; it reads the pressure where it is connected. Lines attached to the old outlet port are freed when a file is opened or pasted, and the outlet tubing size is dropped. Self-test checks updated. |
+| 1.17 | 2026-10-13 | Error log: errors and warnings go to `Logs/pylon.log` (rotating). Component and solver warnings are logged when they appear and clear; Qt and Python warnings, file and import failures, and unhandled errors with tracebacks are logged too. An unhandled error opens an error dialog, and hard crashes go to `Logs/crash.log`. *Help → Generate error report…* saves a text report with the environment, errors, current warnings, recent log and, optionally, the schematic. `--debug` logs every solve. Self-test check added. |
