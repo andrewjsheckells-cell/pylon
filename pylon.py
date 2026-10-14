@@ -92,7 +92,7 @@ import uuid
 import numpy
 
 APPLICATION_NAME = "Pylon"
-APPLICATION_VERSION = "1.25"
+APPLICATION_VERSION = "1.26"
 FILE_FORMAT_VERSION = 3
 
 # Program log (errors and warnings).  Silent until the GUI attaches its handlers (see ErrorLog).
@@ -3225,7 +3225,7 @@ if __name__ == '__main__' and '--selftest' in sys.argv:
 # GUI (PySide6)
 # =============================================================================
 try:
-    from PySide6.QtCore import (QEvent, QMimeData, QPointF, QRectF, QSize, Qt, QtMsgType, QTimer, QUrl, Signal,
+    from PySide6.QtCore import (QEvent, QMimeData, QPoint, QPointF, QRectF, QSize, Qt, QtMsgType, QTimer, QUrl, Signal,
                                 qInstallMessageHandler)
     from PySide6.QtGui import (QAction, QActionGroup, QBrush, QColor, QDesktopServices, QDrag, QFont,
                                QFontMetricsF, QImage, QKeySequence, QLinearGradient, QPainter,
@@ -3618,23 +3618,33 @@ def draw_pylon_logo(painter, right, band_center_y, band_height):
 
 
 class PylonLogo(QWidget):
-    """The PYLON logotype at the right end of the toolbar, centred between the gold rule under the
-    menu bar and the gold rule under the toolbar, sized to that band with a margin."""
+    """The PYLON logotype in the toolbar row, centred vertically between the gold rule under the
+    menu bar and the gold rule under the toolbar (sized to that band with a margin) and centred
+    horizontally over the right-hand panel (the Results / Scenarios dock).  The widget spans from
+    that panel's left edge to the right end of the toolbar, so the logo never overlaps a button."""
 
     def __init__(self, toolbar):
         super().__init__(toolbar)
         self.toolbar = toolbar
+        self.anchors = []                 # right-hand dock widgets to centre over (first visible one)
         self._band_height = None
+        self._anchor_span = None
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
         self.setToolTip(f"{APPLICATION_NAME} {APPLICATION_VERSION}")
         toolbar.installEventFilter(self)          # follow the toolbar's height (see eventFilter)
 
+    def set_anchor_widgets(self, widgets):
+        self.anchors = list(widgets)
+        for widget in self.anchors:
+            widget.installEventFilter(self)       # follow the panel's width and position
+        self.refresh_layout()
+
     def band_height(self):
         """Height of the band between the two gold rules: the toolbar's height less its 2 px bottom
         rule.  Only the toolbar's current geometry is read — never its sizeHint(), which asks this
         widget for its own size hint (that loop overflowed the stack in v1.23)."""
-        toolbar_height = self.toolbar.height()
+        toolbar_height = float(self.toolbar.height())
         return max(toolbar_height - 2.0, 24.0) if toolbar_height > 10 else 40.0
 
     def band(self):
@@ -3642,25 +3652,77 @@ class PylonLogo(QWidget):
         band_height = self.band_height()
         return band_height / 2.0 - self.y(), band_height
 
+    def letter_height(self):
+        return max(self.band_height() * LOGO_CAP_HEIGHT_FRACTION, 6.0)
+
+    def anchor(self):
+        """The right-hand panel to centre over: the first anchor that is shown and docked."""
+        for widget in self.anchors:
+            if widget.isVisible() and not (hasattr(widget, 'isFloating') and widget.isFloating()):
+                return widget
+        return None
+
+    def anchor_span(self):
+        """(left, right) of the right-hand panel in toolbar coordinates, or None."""
+        widget = self.anchor()
+        window = self.toolbar.window()
+        if widget is None or window is None:
+            return None
+        left = float(widget.mapTo(window, QPoint(0, 0)).x()) - float(self.toolbar.mapTo(window, QPoint(0, 0)).x())
+        return left, left + float(widget.width())
+
+    def buttons_right(self):
+        """Right edge (toolbar coordinates) of the last toolbar button left of the logo."""
+        right = 0.0
+        for action in self.toolbar.actions():
+            widget = self.toolbar.widgetForAction(action)
+            if widget is None or widget is self or widget is getattr(self, 'spacer', None) or not widget.isVisible():
+                continue
+            right = max(right, float(widget.x()) + float(widget.width()))
+        return right
+
     def sizeHint(self):
-        width = logo_width(max(self.band_height() * LOGO_CAP_HEIGHT_FRACTION, 6.0)) + LOGO_RIGHT_MARGIN + 8
+        # reads geometry only (never the toolbar's or the panel's sizeHint), so the layout can't loop
+        minimum = logo_width(self.letter_height()) + LOGO_RIGHT_MARGIN + 8
+        width = minimum
+        span = self.anchor_span()
+        if span is not None:
+            # reach back to the panel's left edge, but never into the buttons (a toolbar widget that
+            # does not fit is moved to the overflow menu)
+            toolbar_width = float(self.toolbar.width())
+            room = toolbar_width - self.buttons_right() - 18
+            width = max(minimum, min(toolbar_width - span[0] - 6, room))
         return QSize(int(math.ceil(width)), 24)
 
+    def refresh_layout(self):
+        """Re-hint (once per real change) when the band height or the panel's position / width changes."""
+        key = (self.band_height(), self.anchor_span(), float(self.toolbar.width()))
+        if key != (self._band_height, self._anchor_span, getattr(self, '_toolbar_width', None)):
+            self._band_height, self._anchor_span, self._toolbar_width = key
+            self.updateGeometry()
+            self.update()
+
     def eventFilter(self, watched, event):
-        # when the toolbar changes height, the logo's font (and so its width) follows; update once
-        # per real change so the layout cannot loop
-        if watched is self.toolbar and event.type() == QEvent.Type.Resize:
-            band_height = self.band_height()
-            if band_height != self._band_height:
-                self._band_height = band_height
-                self.updateGeometry()
-                self.update()
+        if event.type() in (QEvent.Type.Resize, QEvent.Type.Move, QEvent.Type.Show, QEvent.Type.Hide):
+            if watched is self.toolbar or watched in self.anchors:
+                self.refresh_layout()
         return False
+
+    def logo_right_edge(self):
+        """x (this widget's coordinates) of the logo's right edge: centred over the right-hand
+        panel when it is docked, else right-justified; always kept inside this widget."""
+        width = logo_width(self.letter_height())
+        span = self.anchor_span()
+        right = float(self.width()) - LOGO_RIGHT_MARGIN
+        if span is not None:
+            center = (span[0] + span[1]) / 2 - float(self.x())           # toolbar -> this widget
+            right = center + width / 2
+        return min(max(right, width + 4), float(self.width()) - 4)
 
     def paintEvent(self, event):
         band_center, band_height = self.band()
         painter = QPainter(self)
-        draw_pylon_logo(painter, self.width() - LOGO_RIGHT_MARGIN, band_center, band_height)
+        draw_pylon_logo(painter, self.logo_right_edge(), band_center, band_height)
         painter.end()
 
 
@@ -8036,7 +8098,9 @@ class MainWindow(QMainWindow):
         spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         toolbar.addWidget(spacer)
         self.logo = PylonLogo(toolbar)
+        self.logo.spacer = spacer
         toolbar.addWidget(self.logo)
+        self.logo.set_anchor_widgets([results_dock, scenario_dock])     # centred over the right-hand panel
         self.toolbar = toolbar
 
     def set_mode(self, mode):

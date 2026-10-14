@@ -6,7 +6,7 @@ A PySide6 desktop tool for drawing a spacecraft liquid-propulsion feed-system sc
 
 | | |
 |---|---|
-| Program | `pylon.py` (single file, version 1.25) |
+| Program | `pylon.py` (single file, version 1.26) |
 | Requires | Python ≥ 3.9, `PySide6`, `numpy` |
 | Run | `pip install PySide6 numpy` then `python pylon.py [schematic.pylon.json]` |
 | Solver self-test (no GUI) | `python pylon.py --selftest` |
@@ -56,7 +56,7 @@ The interface uses a dark sci-fi console style taken from the user's reference s
   * *Results:* a solver status line, total thruster flow vs nominal, thrust, and the pump balance (pump flow = thruster flow + orifice flow). Below that are a table of every block and line section and a list of warnings. Double-click a row or warning to select that item on the canvas.
   * *Scenarios:* save, update, apply, rename, duplicate and delete scenarios.
 * **Toolbar:** Undo, Redo │ Select, Draw Line, ⟲ Rotate, Rotate ⟳, ⇋ Flip (horizontal), ⇵ Flip (vertical) │ Show data │ Solve, Auto-solve, Fit │ Fluid…, Size Orifice…, Lowest RPM…. The buttons use short captions (hover for the full name; the menus keep the full names).
-* **Logo:** a **PYLON** logotype sits at the right end of the toolbar row, right-justified and centred between the gold rule under the menu bar and the gold rule under the toolbar, its letters about half that band tall so there is a margin above and below. The letters are drawn as vector shapes (not a font), so the logo looks the same on every computer: wide geometric capitals with 45° chamfered corners (octagonal O) in the angular style of the panel bezels, filled with the brushed-gold gradient of the bezel rims, with a dark engraved outline and a soft shadow.
+* **Logo:** a **PYLON** logotype sits in the toolbar row, **centred horizontally over the right-hand panel** (System status / Component data; it follows the panel when the window or the panel is resized) and centred vertically between the gold rule under the menu bar and the gold rule under the toolbar. If the toolbar buttons reach past the panel's left edge (a narrow window), the logo shifts right just enough to clear them; if the panel is closed or floating, it is right-justified. Its letters are about half that band tall so there is a margin above and below. The letters are drawn as vector shapes (not a font), so the logo looks the same on every computer: wide geometric capitals with 45° chamfered corners (octagonal O) in the angular style of the panel bezels, filled with the brushed-gold gradient of the bezel rims, with a dark engraved outline and a soft shadow.
 
 ### 2.1a Undo, rotate, flip, icon size and data visibility
 * **Undo / Redo** (toolbar, Edit menu, **Ctrl+Z** / **Ctrl+Y** or Ctrl+Shift+Z).
@@ -543,7 +543,12 @@ LAYOUT
   chamfered bowl and a counter hole, Y with two arms over a centred stem, L with a chamfered foot,
   octagonal O with an octagonal counter, N with a parallel-edged diagonal; letter spacing 0.20),
   letter height = 0.52 × the band between the menu-bar rule and the toolbar rule (toolbar height −
-  its 2 px bottom rule), right edge 10 px from the window edge, centred on the band. Painted with a
+  its 2 px bottom rule), centred on the band. Horizontally centred over the right-hand dock (first
+  visible, docked one of Results / Scenarios): the widget's size hint reaches from the dock's left
+  edge to the toolbar's right end, capped so it never pushes buttons into the overflow menu (toolbar
+  width − right edge of the last button − 18 px); the logo is clamped inside the widget; dock closed
+  or floating → right-justified 10 px from the edge. Event filters on the toolbar and the docks
+  (resize / move / show / hide) re-hint once per real change; only geometry is read, never sizeHint(). Painted with a
   1.2/1.4 px black shadow, a vertical gold gradient (#fff3c4 → #ffe9a8 → #d9a441 → #8a5a14) and a
   dark-brown miter outline. PylonLogo.sizeHint() reads only toolbar.height() (never
   toolbar.sizeHint(), which asks the logo back and recursed in 1.23); an event filter on the
@@ -920,3 +925,4 @@ CODE CONVENTIONS
 | 1.23 | 2026-10-14 | "≡≡≡ PYLON ≡≡≡" logo at the right end of the toolbar, in the panel-title font, centred between the two gold rules and sized to fill that band with a margin. Toolbar buttons use short captions to leave room for it (full names in tooltips and menus). |
 | 1.24 | 2026-10-14 | Fix: the 1.23 logo crashed at start-up with a RecursionError (its size hint asked the toolbar for its size hint, which asks the logo back). The logo now reads only the toolbar's current height and follows height changes through an event filter. |
 | 1.25 | 2026-10-14 | The logo is now a drawn **PYLON** logotype (wide geometric capitals with chamfered corners, brushed-gold fill, engraved outline, shadow) instead of text in the panel-title font, and the ≡≡≡ bars are gone. It needs no font file and looks the same on every computer. |
+| 1.26 | 2026-10-14 | The logo is centred horizontally over the right-hand panel (System status / Component data) and follows it when the window or the panel is resized; it moves right only as far as needed to clear the toolbar buttons. |
