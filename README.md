@@ -14,6 +14,7 @@
 - **Plumbing lines.** Orthogonal tubes that route around every component, never over it.
   - Draw section by section, drag segments and ends, add or delete segments, and combine several lines into one.
   - Lines can tap into other lines.
+  - Each line's length and **bend table** (angle, radius, count) are set in its properties, independent of the drawn route. Lines with set properties turn blue and ask before deletion; named lines show their name; lines can be saved to the library.
 - **Flow solution.** Node pressures and element flows are solved together by damped Newton–Raphson.
   - Mass flow and ΔP are shown on every tube.
   - Results appear on every component, and pressure transducers read the local pressure.
@@ -71,4 +72,4 @@ Python 3.9 or newer is required. To try the pump-curve import, right-click a pum
 
 ## Status
 
-Version 1.21. The solver passes its built-in self-test (`--selftest`), which covers closed-form orifice flow, Hagen–Poiseuille, Colebrook, the Cv relation, mass balances, orifice sizing, pump-curve interpolation and file upgrades. Verify the loss-coefficient defaults against your own hardware data before relying on results for design decisions.
+Version 1.22. The solver passes its built-in self-test (`--selftest`), which covers closed-form orifice flow, Hagen–Poiseuille, Colebrook, the Cv relation, mass balances, orifice sizing, pump-curve interpolation and file upgrades. Verify the loss-coefficient defaults against your own hardware data before relying on results for design decisions.

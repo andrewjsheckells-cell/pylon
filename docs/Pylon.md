@@ -6,7 +6,7 @@ A PySide6 desktop tool for drawing a spacecraft liquid-propulsion feed-system sc
 
 | | |
 |---|---|
-| Program | `pylon.py` (single file, version 1.21) |
+| Program | `pylon.py` (single file, version 1.22) |
 | Requires | Python ≥ 3.9, `PySide6`, `numpy` |
 | Run | `pip install PySide6 numpy` then `python pylon.py [schematic.pylon.json]` |
 | Solver self-test (no GUI) | `python pylon.py --selftest` |
@@ -50,7 +50,7 @@ The interface uses a dark sci-fi console style taken from the user's reference s
 * **Not copied:** no logos, artwork, fonts or other game assets are included.
 
 ### 2.1 Layout
-* **Left: Component Blocks column.** Enclosed in a gold bezel frame and scrollable when it is taller than the window. *Starting blocks* (the fourteen built-in types) come first, then *Saved blocks & assemblies* (every `.json` in `Component Blocks/`; a saved assembly shows its parts' symbols and "Assembly · N parts"). Click an entry to add it near the centre of the view at a free spot, or drag it to a location. Right-click a saved entry to delete it from the library.
+* **Left: Component Blocks column.** Enclosed in a gold bezel frame and scrollable when it is taller than the window. *Starting blocks* (the fourteen built-in types) come first, then *Saved blocks, assemblies & lines* (every `.json` in `Component Blocks/`; a saved assembly shows its parts' symbols and "Assembly · N parts", a saved line its blue shape and "Line · ID · length · bends"). Click an entry to add it near the centre of the view at a free spot, or drag it to a location. Right-click a saved entry to delete it from the library.
 * **Centre: schematic canvas.** It has a 20 px dot grid; blocks snap to 10 px. Mouse wheel zooms, middle-drag pans, **F** fits all. Right-click empty canvas for *Add block here*, *Paste here*, *Auto-route all lines* and *Solve now*.
 * **Right: Results and Scenarios tabs** (tabs on top; each panel in its own bezel frame).
   * *Results:* a solver status line, total thruster flow vs nominal, thrust, and the pump balance (pump flow = thruster flow + orifice flow). Below that are a table of every block and line section and a list of warnings. Double-click a row or warning to select that item on the canvas.
@@ -121,7 +121,15 @@ An **assembly** is a group of connected parts, fittings and the tubes between th
 * **Right-click menu:** Properties…, **Add segment here** (splits the segment at the cursor; drag either half to form the new section), **Delete segment** (slides a neighbour so the segment collapses; refused if it would move an attached end or cross a block), Auto-route, Reverse direction, Delete line.
 * **Combine:** select several lines that form one continuous chain (Ctrl-click or rubber band), right-click → *Combine N lines into one…*. A properties dialog opens pre-filled with the first line's sizes, the summed length and the summed bend count. The result is one line with the same properties throughout. Lines tapped onto the old pieces are re-attached to the combined line.
 * **Labels:** above each tube (or beside a vertical one) a two-line label shows `ṁ g/s` and `ΔP psid`, with ΔP measured from inlet to outlet in the actual flow direction. Tubes with no flow show `0 g/s`. Each label tries several positions (above/below or right/left, and along the segment) and takes the first that clears every block and every other label. A filled arrow shows the flow direction. Lines with taps show one label per section. The toolbar's *Show flow / pressure data* (D) toggles them all, hovering reveals hidden ones, and right-click → *Show flow / pressure data here* sets them per line (§2.1a).
-* **Line bends and length are inputs only.** The number of bends used in the calculation is not tied to the corners in the drawing.
+* **Line properties are independent of the routing.** Right-click a line → *Properties…* to set its tube (outer / inner diameter, roughness), its **length** and its bends. They are flow inputs only: the drawn route, its length on screen and its corners are never used, so the line can still be dragged, reshaped, re-routed, split or extended as usual without changing them.
+  * **Bend table:** one row per kind of bend — angle (up to 180°), bend radius / tube diameter, and count — with *Add bend*, *Remove selected* and *From 90° bend count*. When the table has rows it replaces *Number of bends (90°)* and *Bend radius / diameter*; when it is empty those two are used. The tooltip summarises the bends (e.g. "6 bends (4 × 90° r/D 1.5, 2 × 45° r/D 1.5)"). See §4.2 for the losses.
+  * **Blue = properties set.** Once a line has been given properties (OK in *Properties…*, a saved line placed or applied, or *Combine*), it is drawn **blue** instead of brass (cyan while selected). Lines in files from before v1.22 are blue when their properties differ from the defaults.
+  * **"Are you sure?"** Deleting a blue line (Delete key, *Delete line*, *Delete selected lines*) asks first. Lines with default properties are deleted without asking; undo (Ctrl+Z) works either way.
+  * **Names:** a name you give a line in *Properties…* is shown beside its longest segment (gold, like block names), in the line drawing too. Automatic names (L1, L2 …) are not shown. Copies keep the name, numbered if it is already in use.
+* **Saved lines:** right-click a line → *Save Line…* writes its name, properties (bend table included) and drawn shape to `Component Blocks/<name>.json`; it appears under *Saved blocks, assemblies & lines*.
+  * Click or drag the entry to place a copy with free ends (blue, named), then drag its ends onto ports or lines.
+  * Right-click any line(s) → *Apply saved line ▸* gives the selected lines that saved line's properties, keeping their own route and name.
+  * Right-click the entry in the column to delete it from the library.
 
 ### 2.4 Scenarios
 A scenario is a saved snapshot of **every block's toggle state and every editable property, plus every line's properties**. Examples: tank at max pressure with a dirty filter, a different pump flowrate, a valve closed.
@@ -184,7 +192,7 @@ Property names in the table are the labels shown in the Properties dialog; the `
 | Tee | inlet, outlet, branch | — (no toggle; always open) | Inlet tube size `inlet_tubing_size`; Outlet tube size `outlet_tubing_size`; Tee (branch) tube size `branch_tubing_size` | Centre pressure `calculated_center_pressure`; Flow at each port `calculated_inlet_flow`, `calculated_outlet_flow`, `calculated_branch_flow` |
 | Cross | inlet, outlet, upper branch (top), lower branch (bottom) | — (no toggle; always open) | Inlet tube size `inlet_tubing_size`; Outlet tube size `outlet_tubing_size`; Upper branch tube size `upper_branch_tubing_size`; Lower branch tube size `lower_branch_tubing_size` | Centre pressure `calculated_center_pressure`; Flow at each port `calculated_inlet_flow`, `calculated_outlet_flow`, `calculated_upper_branch_flow`, `calculated_lower_branch_flow` |
 | 90° Fitting (`elbow`) | inlet, outlet (bottom) | — (no toggle; always open) | Inlet tube size; Outlet tube size | Inlet/outlet pressure; Pressure drop; Mass flow |
-| Plumbing line | start, end (port, another line, or free) | — | Outer diameter [in] `outer_diameter`; Inner diameter [in] `inner_diameter`; Length [in] `length`; Number of 90° bends `bend_count`; Bend radius / diameter `bend_radius_ratio`; Absolute roughness [in] `roughness` | Mass flow (start→end) `calculated_mass_flow`; Pressure drop inlet→outlet `calculated_pressure_drop`; Velocity `calculated_velocity`; Reynolds number `calculated_reynolds_number` |
+| Plumbing line | start, end (port, another line, or free) | — | Outer diameter [in] `outer_diameter`; Inner diameter [in] `inner_diameter`; Length [in] `length`; Number of 90° bends `bend_count`; Bend radius / diameter `bend_radius_ratio`; Bend table `bend_table` (rows of angle °, r/D, count; replaces the two above when not empty); Absolute roughness [in] `roughness` | Mass flow (start→end) `calculated_mass_flow`; Pressure drop inlet→outlet `calculated_pressure_drop`; Velocity `calculated_velocity`; Reynolds number `calculated_reynolds_number` |
 
 Notes
 * **ESEOD (equivalent sharp-edged orifice diameter) / Cv / Cd are linked.** Editing the diameter or Cd recalculates Cv, and editing Cv recalculates the diameter (with Cd held), using `Cv = 29.84 · Cd · d²` (d in inches, water at 60 °F) [ISA].
@@ -227,6 +235,14 @@ For a tube of inner diameter D, length L, area A, mass flow ṁ, velocity V = �
 * **Bends:** each 90° bend adds K = K∞ + K₁/Re with:
   * K∞ = n(r/D)·f_T, the Crane TP-410 bend table [CRANE] (r/D = 1 → 20 f_T, 1.5 → 14, 2–3 → 12, 4 → 14, 6 → 17, 8 → 24, 10 → 30, …);
   * K₁ = 800 per bend (laminar term, two-K method [HOOPER]).
+* **Bends of other angles (bend table):** a bend of angle θ adds K = C∞(θ)·n(r/D)·f_T + C₁(θ)·K₁/Re, with the angle factors taken from the two-K coefficients of 45°, 90° and 180° elbows [HOOPER] (K₁ = 500 / 800 / 1000; K∞ = 0.20 / 0.40 / 0.60), linear in angle between them and zero at 0°:
+
+  | θ | 0° | 45° | 90° | 180° |
+  |---|---|---|---|---|
+  | C∞ (turbulent) | 0 | 0.5 | 1 | 1.5 |
+  | C₁ (laminar) | 0 | 0.625 | 1 | 1.25 |
+
+  Turns over 180° are entered as several rows (e.g. 270° = 180° + 90°). Verify these factors against the Blevins bend-angle data for your geometry. A tapped line shares its length and every bend-table row between its sections pro rata.
 * **f_T** is the fully turbulent friction factor of that tube, from Churchill at Re → ∞ on the Crane commercial-steel roughness basis (0.0018 in, editable).
 * **Port size mismatch:** where a tube meets a component port whose tubing ID differs by more than 2 %, the line gets a direction-aware loss:
   * contraction K = 0.5(1 − β²) on the small-area velocity [CRANE];
@@ -326,6 +342,7 @@ For an orifice in parallel with the pump (one side on the pump-outlet manifold, 
 * that copy names increment the last number (with zero padding), add " 1" when there is none, and skip names in use;
 * that every port of every block type sits on the 10 px grid and on its box edge at all three icon sizes (latch valve outlet 30 / 40 / 60 px; tee arm 20 px);
 * that flips mirror the ports across the screen axes at every rotation, undo themselves, and that horizontal then vertical equals a 180° rotation;
+* that a bend table of 3 × 90° gives exactly the same loss as a bend count of 3, and that 2 × 45° + 1 × 180° gives the two-K angle-factor sum (≈ 2.5 × one 90° bend);
 * that a pump driven past the end of its curve data is flagged as extrapolated, and that a warning whose numbers change counts as one warning in the log;
 * that an error report contains every section, the warnings by component name, and a schematic that reloads exactly;
 * that a pump at a speed between two stored curves interpolates correctly (3500 rpm between 3000 and 4000 rpm gear-pump curves gives 396 mL/min at 200 psid), and that a speed outside the stored curves is reported.
@@ -349,7 +366,9 @@ For an orifice in parallel with the pump (one side on the pump-outlet manifold, 
             "start": {"kind": "port", "block": "pt1", "port": "inlet"},
             "end": {"kind": "line", "line": "l3", "path_fraction": 0.5},
             "properties": {"outer_diameter": 0.25, "inner_diameter": 0.18, "length": 3.0, "bend_count": 1,
-                           "bend_radius_ratio": 3.0, "roughness": 6e-05}}],
+                           "bend_radius_ratio": 3.0, "roughness": 6e-05,
+                           "bend_table": [[90, 1.5, 4], [45, 1.5, 2]]},
+            "properties_defined": true, "name_given": false}],
  "scenarios": [{"name": "Nominal", "blocks": {"<identifier>": {"state": 0, "properties": {}}},
                 "lines": {"<identifier>": {"properties": {}}}}],
  "active_scenario": "Nominal",
@@ -368,6 +387,10 @@ For an orifice in parallel with the pump (one side on the pump-outlet manifold, 
 * `mirrored` (flipped left-right in the block's own frame, applied before `orientation`) and `icon_size` (`small` / `medium` / `large`) are optional; files without them load as unmirrored, medium.
 
 **Saved block (`Component Blocks/<name>.json`):** `{"format": "pylon_block", "version": 3, "name", "type", "state", "orientation", "mirrored", "icon_size", "properties", "pump_curves"}`. Saved blocks from earlier versions (`props`, `curves`, `orient`) are upgraded by `upgrade_block_template()` when the column is loaded.
+
+* Line `properties_defined` (properties set: drawn blue, asks before delete) and `name_given` (the name is shown) are optional; without them a line is "defined" when its properties differ from the defaults and its name is shown unless it is an automatic L-number. `bend_table` is optional.
+
+**Saved line (`Component Blocks/<name>.json`):** `{"format": "pylon_line", "version": 3, "name", "line_name", "name_given", "properties", "points"}`, with `points` relative to the line's first point.
 
 **Saved assembly (`Component Blocks/<name>.json`):** `{"format": "pylon_assembly", "version": 3, "name", "blocks", "lines", "assemblies": {"assembly": {"name", "locked": true}}}`. `blocks` and `lines` are in the clipboard form (every member has `"assembly": "assembly"`); placing it maps them to new identifiers and names, like a paste.
 
@@ -699,8 +722,24 @@ Orthogonal polylines (horizontal/vertical segments only) whose ends attach to a 
 - With 2+ lines selected: Combine N lines into one… (must form one chain; dialog pre-filled with the
   first line's sizes and the summed length and bends; taps re-attached), Auto-route selected,
   Delete selected.
-- Line properties: OD, ID, length, number of 90° bends, bend r/D, roughness (flow inputs only, not tied
-  to the drawing), plus a standard-tube helper; calculated flow, ΔP, velocity, Re.
+- Line properties (LineDialog = PropertyDialog + bend-table widget via the add_extra_widgets hook): OD,
+  ID, length, number of 90° bends, bend r/D, roughness, and a bend table (rows angle 0-180°, r/D, count;
+  parse_bend_table_rows validates; non-empty table replaces bend count / r/D; stored as
+  properties.bend_table) — flow inputs only, never taken from the drawn route, so lines stay freely
+  reshapable; plus a standard-tube helper; calculated flow, ΔP, velocity, Re.
+- properties_defined: set by OK in Properties, placing / applying a saved line, Combine; such lines draw
+  blue (#2f6cf0, hover #6f9bff; selected cyan) and scene.delete_items asks main_window.
+  confirm_delete_defined_lines() ("Are you sure? …") first. Missing in old files: inferred true when any
+  property differs from default_line_properties() or a bend table exists.
+- name_given: set when the user changes the name in Properties (missing: true unless the name is an
+  automatic L\d+). Given names are drawn (gold bold, no plate) beside the longest segment with
+  place_label, placed before the data labels (which avoid it); shown in line drawings when names are
+  on. Paste keeps a given name (incremented_name if taken), other lines get the next L-number.
+- Save Line… (line menu) writes {format: pylon_line, version, name, line_name, name_given, properties,
+  points relative to the first point} to Component Blocks; listed with saved blocks (line_pixmap: the
+  shape as a blue tube; "Line · ID · length · bends"); click / drag places a copy via paste_payload with
+  free ends; line menu "Apply saved line ▸" copies a saved line's properties to the selected lines.
+- Scenario apply: a snapshot without bend_table removes a line's table (it had bend counts only).
 - Above each tube (or beside a vertical one) show a two-line label "ṁ g/s" / "ΔP psid", with ΔP
   measured inlet to outlet in the flow direction ("0 g/s" when there is no flow), plus a
   flow-direction arrow. Tapped lines show one label per section. place_label() tries above/below
@@ -715,7 +754,8 @@ PHYSICS
   which tank pressure drives the flow.
 - Tubes: Darcy friction from Churchill (1977), evaluated as (f·Re)·μ·V·L/(2D²) so it is smooth at zero
   flow. Bends: K = K∞ + K1/Re per bend, with K∞ = n(r/D)·f_T from the Crane TP-410 bend table and
-  K1 = 800. f_T = Churchill at Re→∞ on the Crane steel roughness basis (0.0018 in).
+  K1 = 800; a bend of angle θ scales them by C∞(θ) / C1(θ) interpolated from (0, 45, 90, 180°) =
+  (0, 0.5, 1, 1.5) / (0, 0.625, 1, 1.25) (Hooper two-K 45/90/180° elbows). f_T = Churchill at Re→∞ on the Crane steel roughness basis (0.0018 in).
 - Port/tube ID mismatch > 2 %: direction-aware Crane contraction 0.5(1−β²) and Borda–Carnot expansion
   (1−β²)², applied at that line end.
 - ESEO components: ṁ = Cd·A·√(2ρΔp), A = π·ESEOD²/4. ESEOD is a user input per state (or derived
@@ -865,3 +905,4 @@ CODE CONVENTIONS
 | 1.19 | 2026-10-13 | From a user log: a running pump whose operating point is past the end of its curve data is now warned as extrapolated (a stiff curve extended past its data can give very high outlet pressures), and reversed pump flow is flagged. The log records a warning once while only its numbers change, instead of logging it again and "clearing" the old values on every solve. The version string now matches the release (1.18 still reported 1.17). Self-test checks added. |
 | 1.20 | 2026-10-13 | Tees, crosses and 90° fittings no longer show name or result labels on the canvas (including on hover and in line drawings); their flows are in the tooltip, Properties and the Results tab. |
 | 1.21 | 2026-10-13 | Pylon opens the most recently opened or saved schematic at start-up instead of the example (the example opens when there is none). *File → Open recent* lists the last 10 schematics; *Open…* starts in the last file's folder. |
+| 1.22 | 2026-10-14 | Lines: a **bend table** (angle, bend radius / D, count; Hooper two-K angle factors) next to length, independent of the drawn route, so lines stay freely reshapable. Lines with set properties turn **blue** and ask **"Are you sure?"** before deletion. **Save Line…** adds a line (properties, name, shape) to the library; click to place a copy or *Apply saved line* to existing lines. Names given to lines are shown on the canvas. Self-test check added. |

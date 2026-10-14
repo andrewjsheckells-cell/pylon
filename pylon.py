@@ -92,7 +92,7 @@ import uuid
 import numpy
 
 APPLICATION_NAME = "Pylon"
-APPLICATION_VERSION = "1.21"
+APPLICATION_VERSION = "1.22"
 FILE_FORMAT_VERSION = 3
 
 # Program log (errors and warnings).  Silent until the GUI attaches its handlers (see ErrorLog).
@@ -271,6 +271,59 @@ def crane_bend_multiplier(bend_radius_ratio):
     radius_ratios = [ratio for ratio, _ in CRANE_BEND_MULTIPLIER_BY_RADIUS_RATIO]
     multipliers = [multiplier for _, multiplier in CRANE_BEND_MULTIPLIER_BY_RADIUS_RATIO]
     return float(numpy.interp(bend_radius_ratio, radius_ratios, multipliers))
+
+
+# Bends of other angles, relative to a 90° bend of the same radius.  From the two-K
+# coefficients of 45°, 90° and 180° elbows (K1 = 500 / 800 / 1000, K-infinity = 0.20 / 0.40 /
+# 0.60 for r/D = 1)   [HOOPER]; linear in angle between those points, 0 at 0°.
+BEND_ANGLE_TURBULENT_FACTOR = [(0.0, 0.0), (45.0, 0.5), (90.0, 1.0), (180.0, 1.5)]
+BEND_ANGLE_LAMINAR_FACTOR = [(0.0, 0.0), (45.0, 0.625), (90.0, 1.0), (180.0, 1.25)]
+
+
+def bend_angle_factors(angle_degrees):
+    """(turbulent, laminar) multipliers on a 90° bend's K for a bend of this angle (0-180°)   [HOOPER]."""
+    angle = min(max(float(angle_degrees), 0.0), 180.0)
+    return (float(numpy.interp(angle, *zip(*BEND_ANGLE_TURBULENT_FACTOR))),
+            float(numpy.interp(angle, *zip(*BEND_ANGLE_LAMINAR_FACTOR))))
+
+
+def line_bend_table(properties):
+    """The bends of a line as [(angle °, bend radius / D, count), ...].
+
+    A non-empty 'bend_table' property (rows of angle, r/D, count) is used as given; otherwise
+    'bend_count' 90° bends of 'bend_radius_ratio'.  Neither is tied to the drawn route."""
+    rows = []
+    for row in (properties or {}).get('bend_table') or []:
+        try:
+            angle, radius_ratio, count = float(row[0]), float(row[1]), float(row[2])
+        except (TypeError, ValueError, IndexError):
+            continue
+        if angle > 0 and count > 0 and radius_ratio > 0:
+            rows.append((angle, radius_ratio, count))
+    if rows or (properties or {}).get('bend_table'):
+        return rows
+    count = max(float((properties or {}).get('bend_count', 0) or 0), 0.0)
+    return [(90.0, float((properties or {}).get('bend_radius_ratio', 3.0)), count)] if count > 0 else []
+
+
+def bend_table_summary(properties):
+    """Short text such as '3 bends (2 × 90° r/D 3, 1 × 45° r/D 1.5)'."""
+    rows = line_bend_table(properties)
+    total = sum(count for _, _, count in rows)
+    if not rows:
+        return '0 bends'
+    detail = ', '.join(f"{format_number(count)} × {format_number(angle)}° r/D {format_number(radius_ratio)}"
+                       for angle, radius_ratio, count in rows)
+    return f"{format_number(total)} bend{'s' if total != 1 else ''} ({detail})"
+
+
+def line_template_summary(template):
+    """'0.18 in ID · 24 in · 3 bends' for a saved line."""
+    properties = template.get('properties') or {}
+    total_bends = sum(count for _, _, count in line_bend_table(properties))
+    return (f"{format_number(float(properties.get('inner_diameter', 0)))} in ID · "
+            f"{format_number(float(properties.get('length', 0)))} in · "
+            f"{format_number(total_bends)} bend{'s' if total_bends != 1 else ''}")
 
 
 def churchill_friction_factor_times_reynolds(reynolds_number, relative_roughness):
@@ -1195,18 +1248,28 @@ def area_change_quadratic_coefficient(upstream_area, downstream_area, density):
 
 
 def make_tube_pressure_drop_function(diameter, length, bend_count, bend_radius_ratio, roughness, density,
-                                     viscosity, settings, end_area_change_coefficients=()):
+                                     viscosity, settings, end_area_change_coefficients=(), bends=None):
     """Pressure drop of a straight tube with bends and optional end area changes.
 
     Friction (Darcy-Weisbach):  dP = f * (L/D) * rho * V^2 / 2              [CRANE], [WHITE]
         written as (f*Re) * mu * V * L / (2 D^2) with f from                [CHURCHILL]
-    Bends (each 90°):           K = n(r/D) * f_T + K1/Re                    [CRANE], [HOOPER]
-    End area changes:           see area_change_quadratic_coefficient()     [CRANE]"""
+    Bends:                      K = C(angle) * n(r/D) * f_T + C1(angle) * K1/Re per bend
+                                (90° bends: C = C1 = 1)                     [CRANE], [HOOPER]
+    End area changes:           see area_change_quadratic_coefficient()     [CRANE]
+
+    `bends` = [(angle °, r/D, count), ...] (a line's bend table); without it, `bend_count`
+    90° bends of `bend_radius_ratio`."""
     area = math.pi * diameter * diameter / 4.0
     relative_roughness = roughness / diameter
     turbulent_friction = fully_turbulent_friction_factor(diameter, settings)
-    bend_turbulent_coefficient = bend_count * crane_bend_multiplier(bend_radius_ratio) * turbulent_friction
-    bend_laminar_coefficient = bend_count * settings.get('bend_laminar_coefficient', 800.0)
+    if bends is None:
+        bends = [(90.0, bend_radius_ratio, bend_count)] if bend_count > 0 else []
+    bend_turbulent_coefficient = 0.0
+    bend_laminar_coefficient = 0.0
+    for angle, radius_ratio, count in bends:
+        turbulent_factor, laminar_factor = bend_angle_factors(angle)
+        bend_turbulent_coefficient += count * turbulent_factor * crane_bend_multiplier(radius_ratio) * turbulent_friction
+        bend_laminar_coefficient += count * laminar_factor * settings.get('bend_laminar_coefficient', 800.0)
     bend_quadratic_coefficient = bend_turbulent_coefficient / (2.0 * density * area * area)
     bend_linear_coefficient = bend_laminar_coefficient * viscosity / (2.0 * density * area * diameter)
     end_coefficients = list(end_area_change_coefficients)
@@ -1286,8 +1349,7 @@ def build_network(model):
         properties = line.get('properties', {})
         diameter = max(float(properties.get('inner_diameter', 0.18)), 1e-4) * METERS_PER_INCH
         total_length = max(float(properties.get('length', 1.0)), 1e-3) * METERS_PER_INCH
-        bend_count = max(float(properties.get('bend_count', 0)), 0.0)
-        bend_radius_ratio = float(properties.get('bend_radius_ratio', 3.0))
+        bends = line_bend_table(properties)            # bend table, or n x 90° bends
         roughness = max(float(properties.get('roughness', 0.0)), 0.0) * METERS_PER_INCH
         line_area = math.pi * diameter * diameter / 4
         # area change where the tube meets a port of a different inner diameter   [CRANE]
@@ -1331,9 +1393,11 @@ def build_network(model):
             if section_index == section_count - 1 and end_area_change['end']:
                 end_coefficients.append(end_area_change['end'])
             element_key = f"{line_identifier}#{section_index}"
+            # a tapped line's length and bends are shared between its sections pro rata
             pressure_drop_function = make_tube_pressure_drop_function(
-                diameter, total_length * fraction, bend_count * fraction, bend_radius_ratio, roughness,
-                density, viscosity, settings, end_coefficients)
+                diameter, total_length * fraction, 0, 3.0, roughness, density, viscosity, settings,
+                end_coefficients, bends=[(angle, radius_ratio, count * fraction)
+                                         for angle, radius_ratio, count in bends])
             pending_elements.append(('resistance', cut_nodes[section_index], cut_nodes[section_index + 1],
                                      ('line', line_identifier, section_index), element_key,
                                      pressure_drop_function))
@@ -1993,6 +2057,8 @@ def apply_snapshot(model, snapshot):
         saved = snapshot.get('lines', {}).get(line['identifier'])
         if saved:
             line['properties'].update(copy.deepcopy(saved.get('properties', {})))
+            if 'bend_table' not in saved.get('properties', {}):
+                line['properties'].pop('bend_table', None)
     return model
 
 
@@ -2823,7 +2889,7 @@ def build_example_model():
         properties.update(outer_diameter=outer_diameter, inner_diameter=outer_diameter - 2 * wall_thickness,
                           length=length, bend_count=bend_count)
         return {'identifier': identifier, 'name': name, 'points': None, 'start': start, 'end': end,
-                'properties': properties, 'auto_routed': True}
+                'properties': properties, 'auto_routed': True, 'properties_defined': False, 'name_given': False}
 
     def port(block_identifier, port_name):
         return {'kind': 'port', 'block': block_identifier, 'port': port_name}
@@ -3078,6 +3144,24 @@ def run_self_test():
     print(f"  [{'PASS' if keys_ok else 'FAIL'}] a warning whose numbers change is logged once")
     all_passed &= keys_ok
 
+    print("Line bend table")
+    bend_line = {'bend_count': 3, 'bend_radius_ratio': 1.5}
+    as_table = {'bend_count': 0, 'bend_table': [[90, 1.5, 3]]}
+    mixed = {'bend_table': [[45, 1.5, 2], [180, 1.5, 1]]}
+    flow = 0.004
+    drops = [make_tube_pressure_drop_function(0.18 * METERS_PER_INCH, 0.3, 0, 3.0, 1.5e-6, 1004.0, 9e-4,
+                                              DEFAULT_SETTINGS, bends=line_bend_table(properties))(flow)
+             for properties in (bend_line, as_table, mixed, {'bend_count': 0})]
+    straight = drops[3]
+    ninety_k = (drops[0] - straight) / 3
+    mixed_expected = 2 * 0.5 * ninety_k + 1.5 * ninety_k        # turbulent-dominated check, loose tolerance
+    table_ok = (abs(drops[0] - drops[1]) < 1e-9 * drops[0]
+                and abs((drops[2] - straight) - mixed_expected) / mixed_expected < 0.08
+                and line_bend_table({'bend_table': [], 'bend_count': 2})[0][2] == 2)
+    print(f"  [{'PASS' if table_ok else 'FAIL'}] 3 × 90° in the table = bend count 3; 2 × 45° + 1 × 180° ≈ "
+          f"{(drops[2] - straight) / ninety_k:.2f} × one 90° bend (two-K angle factors)")
+    all_passed &= table_ok
+
     print("Copy names")
     taken = {'LV-1', 'LV-2', 'Main valve', 'TK-09'}
     naming_cases = [('LV-1', 'LV-3'), ('LV-2', 'LV-3'), ('Main valve', 'Main valve 1'), ('TK-09', 'TK-10'),
@@ -3186,6 +3270,9 @@ THEME = {
 }
 COLOR_LINE = QColor(THEME['gold'])
 COLOR_LINE_SELECTED = QColor(THEME['cyan'])
+COLOR_LINE_DEFINED = QColor('#2f6cf0')             # lines whose properties have been set: blue
+COLOR_LINE_DEFINED_HOVER = QColor('#6f9bff')
+AUTOMATIC_LINE_NAME = re.compile(r'L\d+')        # names Pylon gives lines (L1, L2 …) are not shown
 COLOR_WARNING = QColor(THEME['warning'])
 COLOR_SELECTED = QColor(THEME['cyan'])
 COLOR_TEXT = QColor(THEME['text'])
@@ -3724,6 +3811,31 @@ def symbol_pixmap(block_type, state=0, width=76, height=50):
     painter.translate(width / 2, height / 2)
     painter.scale(scale, scale)
     draw_symbol(painter, block_type, state, COLOR_SYMBOL)
+    painter.end()
+    return pixmap
+
+
+def line_pixmap(template, width=76, height=50):
+    """Palette icon for a saved line: its drawn shape as a blue tube."""
+    pixmap = QPixmap(width, height)
+    pixmap.fill(QColor(0, 0, 0, 0))
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    points = [tuple(point) for point in (template.get('points') or [(0, 0), (100, 0)])]
+    xs, ys = [point[0] for point in points], [point[1] for point in points]
+    span = max(max(xs) - min(xs), max(ys) - min(ys), 1.0)
+    scale = min((width - 14) / max(max(xs) - min(xs), 1.0), (height - 14) / max(max(ys) - min(ys), 1.0), 60.0 / span)
+    center_x, center_y = (max(xs) + min(xs)) / 2, (max(ys) + min(ys)) / 2
+    path = QPainterPath(QPointF(width / 2 + (xs[0] - center_x) * scale, height / 2 + (ys[0] - center_y) * scale))
+    for x, y in points[1:]:
+        path.lineTo(QPointF(width / 2 + (x - center_x) * scale, height / 2 + (y - center_y) * scale))
+    for line_width, color in ((6.0, QColor(10, 14, 30, 235)), (3.4, COLOR_LINE_DEFINED), (1.0, QColor(200, 220, 255, 160))):
+        pen = QPen(color, line_width)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawPath(path)
     painter.end()
     return pixmap
 
@@ -4427,6 +4539,17 @@ class LineItem(DataLabelVisibility, QGraphicsPathItem):
         self.auto_routed = bool(data.get('auto_routed', True))
         self.assembly_identifier = data.get('assembly')
         self.data_label_override = data.get('data_label_visibility')
+        # a line whose properties were set (Properties…, a saved line, Combine) is drawn blue and
+        # asks before it is deleted; a name the user gave is shown on the canvas
+        defined = data.get('properties_defined')
+        if defined is None:     # files from before v1.22: a line whose properties differ from the defaults
+            defaults = default_line_properties()
+            defined = bool(self.properties.get('bend_table')) or any(
+                abs(float(self.properties.get(key, value)) - float(value)) > 1e-12
+                for key, value in defaults.items() if isinstance(value, (int, float)))
+        self.properties_defined = bool(defined)
+        self.name_given = bool(data.get('name_given', not AUTOMATIC_LINE_NAME.fullmatch(self.name or '')))
+        self.name_label = None
         self._hover_reveal = False
         self.result = None
         self.labels = []
@@ -4441,7 +4564,8 @@ class LineItem(DataLabelVisibility, QGraphicsPathItem):
         data = {'identifier': self.identifier, 'name': self.name,
                 'points': [[float(point[0]), float(point[1])] for point in self.points],
                 'start': copy.deepcopy(self.start), 'end': copy.deepcopy(self.end),
-                'properties': copy.deepcopy(self.properties), 'auto_routed': self.auto_routed}
+                'properties': copy.deepcopy(self.properties), 'auto_routed': self.auto_routed,
+                'properties_defined': self.properties_defined, 'name_given': self.name_given}
         if self.data_label_override is not None:
             data['data_label_visibility'] = self.data_label_override
         if self.assembly_identifier:
@@ -4475,11 +4599,13 @@ class LineItem(DataLabelVisibility, QGraphicsPathItem):
                 path.lineTo(to_qpoint(point))
         self.setPath(path)
         self.layout_labels()
-        self.setToolTip(f"<b>{self.name}</b> — inner diameter "
+        self.setToolTip(f"<b>{html.escape(self.name)}</b> — inner diameter "
                         f"{format_number(float(self.properties.get('inner_diameter', 0)))} in, "
                         f"length {format_number(float(self.properties.get('length', 0)))} in, "
-                        f"{int(self.properties.get('bend_count', 0))} bends<br>"
-                        "Drag a segment to move it · drag an end to reconnect · right-click for menu")
+                        f"{bend_table_summary(self.properties)}"
+                        + ("<br>Properties set (blue): length and bends are fixed, whatever the drawn route"
+                           if self.properties_defined else '')
+                        + "<br>Drag a segment to move it · drag an end to reconnect · right-click for menu")
 
     def shape(self):
         stroker = QPainterPathStroker()
@@ -4495,10 +4621,35 @@ class LineItem(DataLabelVisibility, QGraphicsPathItem):
         self.update()
 
     def remove_labels(self):
-        for label in self.labels:
+        for label in self.labels + ([self.name_label] if self.name_label is not None else []):
             if label.scene() is not None:
                 label.scene().removeItem(label)
         self.labels = []
+        self.name_label = None
+
+    def layout_name_label(self, obstacles):
+        """The line's name, beside its longest segment, when the user gave it one."""
+        scene = self.scene()
+        if not (self.name_given and self.name and len(self.points) >= 2 and scene is not None):
+            if self.name_label is not None and self.name_label.scene() is not None:
+                self.name_label.scene().removeItem(self.name_label)
+            self.name_label = None
+            return
+        if self.name_label is None:
+            self.name_label = LabelItem(None, point_size=8.0, bold=True, color=COLOR_HEADING, plate=False)
+            self.name_label.setZValue(9)
+            scene.addItem(self.name_label)
+        self.name_label.set_text(self.name)
+        longest_index = max(range(len(self.points) - 1),
+                            key=lambda index: (abs(self.points[index + 1][0] - self.points[index][0])
+                                               + abs(self.points[index + 1][1] - self.points[index][1])))
+        rectangle = self.name_label.boundingRect()
+        center_x, center_y = place_label(self.points[longest_index], self.points[longest_index + 1],
+                                         rectangle.width(), rectangle.height(), obstacles, gap=5)
+        self.name_label.setPos(center_x, center_y)
+        self.name_label.setVisible(True)
+        obstacles.append((center_x - rectangle.width() / 2, center_y - rectangle.height() / 2,
+                          center_x + rectangle.width() / 2, center_y + rectangle.height() / 2))
 
     def layout_labels(self):
         scene = self.scene()
@@ -4520,11 +4671,12 @@ class LineItem(DataLabelVisibility, QGraphicsPathItem):
         for other_line in getattr(scene, 'lines', {}).values():
             if other_line is self:
                 continue
-            for other_label in other_line.labels:
+            for other_label in other_line.labels + ([other_line.name_label] if other_line.name_label else []):
                 if other_label.isVisible() and other_label.text:
                     center, rectangle = other_label.pos(), other_label.boundingRect()
                     obstacles.append((center.x() + rectangle.left(), center.y() + rectangle.top(),
                                       center.x() + rectangle.right(), center.y() + rectangle.bottom()))
+        self.layout_name_label(obstacles)
         for label, section in zip(self.labels, sections):
             section_points = sub_polyline(self.points, section['start_fraction'], section['end_fraction'])
             longest_index = max(range(len(section_points) - 1),
@@ -4588,8 +4740,12 @@ class LineItem(DataLabelVisibility, QGraphicsPathItem):
         if line_drawing is not None:
             self.paint_line_drawing(painter, line_drawing)
             return
-        body_color = (COLOR_LINE_SELECTED if self.isSelected()
-                      else (QColor(THEME['gold_highlight']) if self._hovered else COLOR_LINE))
+        if self.isSelected():
+            body_color = COLOR_LINE_SELECTED
+        elif self.properties_defined:
+            body_color = COLOR_LINE_DEFINED_HOVER if self._hovered else COLOR_LINE_DEFINED
+        else:
+            body_color = QColor(THEME['gold_highlight']) if self._hovered else COLOR_LINE
         painter.setBrush(Qt.BrushStyle.NoBrush)
         # brass pipe: dark outline, gold body, light highlight
         for width, color in ((7.5, QColor(20, 12, 2, 235)), (4.2, body_color), (1.2, QColor(255, 244, 210, 150))):
@@ -5139,7 +5295,14 @@ class SchematicScene(QGraphicsScene):
         self.removeItem(line)
         self.lines.pop(line.identifier, None)
 
-    def delete_items(self, items):
+    def delete_items(self, items, confirm=True):
+        """Delete blocks and lines.  Lines whose properties were set (blue) are only deleted
+        after "Are you sure?" (confirm=False skips the question)."""
+        defined_lines = [item for item in items if isinstance(item, LineItem) and item.properties_defined
+                         and item.identifier in self.lines]
+        ask = getattr(self.main_window, 'confirm_delete_defined_lines', None)
+        if confirm and defined_lines and ask is not None and not ask(defined_lines):
+            return
         for item in list(items):
             if isinstance(item, BlockItem) and item.identifier in self.blocks:
                 self.remove_block(item)
@@ -5300,6 +5463,7 @@ class SchematicScene(QGraphicsScene):
                                                                         'locked': bool(record.get('locked', True))}
         new_items = []
         taken_names = {existing.name for existing in self.blocks.values()}
+        taken_line_names = {existing.name for existing in self.lines.values()}
         self.loading = True                       # defer re-routing until everything exists
         try:
             for block in payload['blocks']:
@@ -5318,7 +5482,13 @@ class SchematicScene(QGraphicsScene):
                 line_data = copy.deepcopy(line)
                 line_data['identifier'] = line_identifier_map[line['identifier']]
                 line_data['assembly'] = assembly_identifier_map.get(line.get('assembly'))
-                line_data['name'] = None
+                # a name the user gave is kept (incremented if already in use); others get the next L-number
+                if line.get('name_given') and line.get('name'):
+                    line_data['name'] = (line['name'] if line['name'] not in taken_line_names
+                                         else incremented_name(line['name'], taken_line_names))
+                    taken_line_names.add(line_data['name'])
+                else:
+                    line_data['name'] = None
                 line_data['points'] = [(point[0] + offset_x, point[1] + offset_y) for point in line['points']]
                 line_data['start'] = remap(line['start'])
                 line_data['end'] = remap(line['end'])
@@ -5571,12 +5741,18 @@ class SchematicScene(QGraphicsScene):
         last_line, last_entry = chain_order[-1]
         start_attachment = first_line.start if first_entry == 'start' else first_line.end
         end_attachment = last_line.end if last_entry == 'start' else last_line.start
-        properties = dict(first_line.properties)
+        properties = copy.deepcopy(first_line.properties)
         properties['length'] = sum(float(line.properties.get('length', 0)) for line in selected_lines)
         properties['bend_count'] = int(sum(float(line.properties.get('bend_count', 0)) for line in selected_lines))
-        dialog = PropertyDialog(self.main_window, "Combined line properties", LINE_PROPERTIES, properties,
-                                name=first_line.name, tube_helper=True,
-                                note="Length and bends default to the sums of the selected lines.")
+        if any(line.properties.get('bend_table') for line in selected_lines):
+            # merge every line's bends (table rows or 90° counts) into one table
+            merged = {}
+            for line in selected_lines:
+                for angle, radius_ratio, count in line_bend_table(line.properties):
+                    merged[(angle, radius_ratio)] = merged.get((angle, radius_ratio), 0) + count
+            properties['bend_table'] = [[angle, radius_ratio, count] for (angle, radius_ratio), count in merged.items()]
+        dialog = LineDialog(self.main_window, "Combined line properties", properties, name=first_line.name,
+                            note="Length and bends default to the sums of the selected lines.")
         if not dialog.exec():
             return
         if start_attachment and start_attachment.get('kind') == 'line' and start_attachment.get('line') in used_identifiers:
@@ -5584,8 +5760,9 @@ class SchematicScene(QGraphicsScene):
         if end_attachment and end_attachment.get('kind') == 'line' and end_attachment.get('line') in used_identifiers:
             end_attachment = None
         combined_line = self.add_line({'points': simplify(combined_points), 'start': copy.deepcopy(start_attachment),
-                                       'end': copy.deepcopy(end_attachment), 'properties': dialog.values,
-                                       'auto_routed': False, 'name': dialog.name})
+                                       'end': copy.deepcopy(end_attachment), 'properties': dialog.line_properties(),
+                                       'auto_routed': False, 'name': dialog.name, 'properties_defined': True,
+                                       'name_given': first_line.name_given or dialog.name != first_line.name})
         for other_line in self.lines.values():
             if other_line is combined_line or other_line.identifier in used_identifiers:
                 continue
@@ -5745,6 +5922,15 @@ class SchematicScene(QGraphicsScene):
             menu.addSeparator()
         menu.addAction("Copy\tCtrl+C", lambda: self.main_window.copy_items(self.selectedItems() or [line]))
         menu.addAction("Properties…", lambda: self.main_window.edit_line(line))
+        menu.addAction("Save Line…", lambda: self.main_window.save_line(line))
+        apply_menu = menu.addMenu("Apply saved line")
+        saved_lines = [template for _, template in list_saved_blocks() if template.get('format') == 'pylon_line']
+        targets = selected_lines or [line]
+        for template in saved_lines:
+            apply_menu.addAction(f"{template.get('name')} — {line_template_summary(template)}",
+                                 lambda checked=False, template=template: self.apply_line_template(targets, template))
+        if not saved_lines:
+            apply_menu.addAction("(no saved lines — right-click a line → Save Line…)").setEnabled(False)
         self._add_data_label_action(menu, line)
         _, closest_point, segment_index, _ = project_on_polyline(line.points, to_tuple(event.scenePos()))
         menu.addAction("Add segment here", lambda: self.add_segment(line, segment_index, closest_point))
@@ -5816,6 +6002,31 @@ class SchematicScene(QGraphicsScene):
         else:
             super().dragMoveEvent(event)
 
+    def place_line_template(self, template, position):
+        """Add a saved line from the library at `position`: its drawn shape with free ends,
+        ready to drag onto ports, with its properties (and name) already set."""
+        points = [tuple(point) for point in (template.get('points') or [(0, 0), (120, 0)])]
+        payload = {'blocks': [], 'lines': [{
+            'identifier': 'saved_line', 'name': template.get('line_name') or template.get('name'),
+            'name_given': bool(template.get('name_given', True)), 'points': points, 'start': None, 'end': None,
+            'properties': copy.deepcopy(template.get('properties') or {}), 'auto_routed': False,
+            'properties_defined': True}]}
+        return self.paste_payload(payload, position=position)
+
+    def apply_line_template(self, lines, template):
+        """Give existing lines a saved line's properties (bend table included); they turn blue."""
+        for line in lines:
+            if self.is_locked_item(line):
+                self.message.emit(f"'{self.assembly_record(line)['name']}' is locked — unlock the assembly to "
+                                  "change its lines.")
+                continue
+            line.properties = default_line_properties()
+            line.properties.update(copy.deepcopy(template.get('properties') or {}))
+            line.properties_defined = True
+            line.update_path()
+            line.update()
+        self.notify()
+
     def place_assembly(self, template, position):
         """Add a saved assembly from the library, centred at `position`, as a new locked assembly."""
         return self.paste_payload(template, position)
@@ -5825,6 +6036,8 @@ class SchematicScene(QGraphicsScene):
             template = json.loads(bytes(event.mimeData().data(BLOCK_MIME_TYPE).data()).decode('utf-8'))
             if template.get('format') == 'pylon_assembly':
                 self.place_assembly(template, to_tuple(event.scenePos()))
+            elif template.get('format') == 'pylon_line':
+                self.place_line_template(template, to_tuple(event.scenePos()))
             else:
                 self.add_block(template_to_block_data(template), to_tuple(event.scenePos()))
             event.acceptProposedAction()
@@ -5929,6 +6142,8 @@ class SchematicScene(QGraphicsScene):
             line = self.lines.get(identifier)
             if line:
                 line.properties.update(copy.deepcopy(saved.get('properties', {})))
+                if 'bend_table' not in saved.get('properties', {}):
+                    line.properties.pop('bend_table', None)      # the scenario had 90° bend counts only
                 line.update_path()
         self.active_scenario = snapshot.get('name')
         self.notify()
@@ -6024,6 +6239,14 @@ class SchematicView(QGraphicsView):
 # -----------------------------------------------------------------------------
 # Component palette (left column)
 # -----------------------------------------------------------------------------
+def entry_pixmap(template):
+    if template.get('format') == 'pylon_assembly':
+        return assembly_pixmap(template)
+    if template.get('format') == 'pylon_line':
+        return line_pixmap(template)
+    return symbol_pixmap(template['type'], int(template.get('state', 0)))
+
+
 class PaletteEntry(QFrame):
     clicked = Signal(dict)
     delete_requested = Signal(str)
@@ -6041,12 +6264,13 @@ class PaletteEntry(QFrame):
         entry_layout = QHBoxLayout(self)
         entry_layout.setContentsMargins(4, 3, 6, 3)
         is_assembly = template.get('format') == 'pylon_assembly'
+        is_line = template.get('format') == 'pylon_line'
         icon = QLabel()
-        icon.setPixmap(assembly_pixmap(template) if is_assembly
-                       else symbol_pixmap(template['type'], int(template.get('state', 0))))
+        icon.setPixmap(entry_pixmap(template))
         icon.setFixedSize(78, 52)
         entry_layout.addWidget(icon)
         type_label = (f"Assembly · {len(template.get('blocks', []))} parts" if is_assembly
+                      else f"Line · {line_template_summary(template)}" if is_line
                       else BLOCK_TYPES[template['type']]['label'])
         text = QLabel(f"<b style='color:{THEME['heading']}'>{template.get('name') or type_label}</b>"
                       + (f"<br>{muted_html(type_label)}" if saved_path else ''))
@@ -6070,8 +6294,7 @@ class PaletteEntry(QFrame):
         mime_data = QMimeData()
         mime_data.setData(BLOCK_MIME_TYPE, json.dumps(self.template).encode('utf-8'))
         drag.setMimeData(mime_data)
-        drag.setPixmap(assembly_pixmap(self.template) if self.template.get('format') == 'pylon_assembly'
-                       else symbol_pixmap(self.template['type']))
+        drag.setPixmap(entry_pixmap(self.template))
         drag.exec(Qt.DropAction.CopyAction)
 
     def mouseReleaseEvent(self, event):
@@ -6083,8 +6306,8 @@ class PaletteEntry(QFrame):
         if not self.saved_path:
             return
         menu = QMenu(self)
-        menu.addAction("Delete saved assembly" if self.template.get('format') == 'pylon_assembly'
-                       else "Delete saved block", lambda: self.delete_requested.emit(self.saved_path))
+        kind = {'pylon_assembly': 'assembly', 'pylon_line': 'line'}.get(self.template.get('format'), 'block')
+        menu.addAction(f"Delete saved {kind}", lambda: self.delete_requested.emit(self.saved_path))
         menu.exec(event.globalPos())
 
 
@@ -6129,7 +6352,7 @@ class PaletteWidget(QWidget):
                                   'state': 0, 'name': BLOCK_TYPES[block_type]['label']})
             entry.clicked.connect(self.add_requested.emit)
             self.entries_layout.addWidget(entry)
-        self.entries_layout.addWidget(self._header("Saved blocks & assemblies"))
+        self.entries_layout.addWidget(self._header("Saved blocks, assemblies & lines"))
         saved_blocks = list_saved_blocks()
         if not saved_blocks:
             placeholder = QLabel("<i>None yet — right-click a block → Save Block, or select connected "
@@ -6175,6 +6398,8 @@ def list_saved_blocks():
             with open(path, encoding='utf-8') as file_handle:
                 template = json.load(file_handle)
             if template.get('format') == 'pylon_assembly' and isinstance(template.get('blocks'), list):
+                saved_blocks.append((path, template))
+            elif template.get('format') == 'pylon_line' and isinstance(template.get('properties'), dict):
                 saved_blocks.append((path, template))
             elif template.get('type') in BLOCK_TYPES:
                 saved_blocks.append((path, upgrade_block_template(template)))
@@ -6281,12 +6506,16 @@ class PropertyDialog(BezelDialog):
                 button_row.addWidget(button)
             button_row.addStretch(1)
             outer_layout.addLayout(button_row)
+        self.add_extra_widgets(outer_layout)
         button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         accent_buttons(button_box)
         button_box.accepted.connect(self._accept)
         button_box.rejected.connect(self.reject)
         outer_layout.addWidget(button_box)
         self.resize(540, min(760, 140 + 34 * (len(definitions) + 3)))
+
+    def add_extra_widgets(self, layout):
+        """Hook for subclasses: widgets placed above the OK / Cancel buttons."""
 
     @staticmethod
     def _row_label(definition):
@@ -6341,6 +6570,103 @@ class PropertyDialog(BezelDialog):
         if self.state_selector is not None:
             self.state = self.state_selector.currentIndex()
         self.accept()
+
+
+def parse_bend_table_rows(rows):
+    """Bend-table rows of text (angle, r/D, count) -> [[angle, r/D, count], ...]; blank rows are
+    skipped.  Raises ValueError with a message for a bad row."""
+    table = []
+    for row_number, cells in enumerate(rows, start=1):
+        texts = [str(cell or '').strip() for cell in cells]
+        if not any(texts):
+            continue
+        try:
+            angle, radius_ratio, count = (float(text) for text in texts)
+        except ValueError:
+            raise ValueError(f"Bend table row {row_number}: angle, bend radius / D and count must be numbers.")
+        if not (0 < angle <= 180) or radius_ratio <= 0 or count < 0:
+            raise ValueError(f"Bend table row {row_number}: angle 0–180°, bend radius / D > 0, count ≥ 0 "
+                             "(split larger turns into several bends).")
+        table.append([angle, radius_ratio, count])
+    return table
+
+
+class LineDialog(PropertyDialog):
+    """Plumbing-line properties: tube, length and a bend table, none of them tied to the drawn route."""
+
+    def __init__(self, parent, title, properties, calculated_values=None, name=None, note=None):
+        self.bend_table = [list(row) for row in (properties.get('bend_table') or [])]
+        super().__init__(parent, title, LINE_PROPERTIES, properties, calculated_values=calculated_values,
+                         name=name, tube_helper=True,
+                         note=note or ("Length and bends are used in the flow calculation only — they are not "
+                                       "tied to the drawn route, so the line can still be reshaped freely."))
+        self.resize(560, 820)
+
+    def add_extra_widgets(self, layout):
+        box = QFrame()
+        box_layout = QVBoxLayout(box)
+        box_layout.setContentsMargins(0, 4, 0, 0)
+        box_layout.addWidget(QLabel(f"<b style='color:{THEME['heading']}'>BEND TABLE</b>"))
+        hint = QLabel("One row per kind of bend: angle (up to 180°), bend radius / tube diameter, and how many. "
+                      "When the table has rows it replaces 'Number of bends (90°)' and 'Bend radius / diameter'.")
+        hint.setWordWrap(True)
+        hint.setStyleSheet(f"color:{THEME['muted']};")
+        box_layout.addWidget(hint)
+        self.bend_editor = QTableWidget(0, 3)
+        self.bend_editor.setHorizontalHeaderLabels(["Angle [°]", "Bend radius / D", "Count"])
+        self.bend_editor.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.bend_editor.setMinimumHeight(130)
+        for row in self.bend_table:
+            self._add_bend_row(*(format_number(float(value), 6) for value in row))
+        box_layout.addWidget(self.bend_editor)
+        buttons = QHBoxLayout()
+        for text, slot in (("Add bend", lambda: self._add_bend_row('90', format_number(float(
+                               self.editors['bend_radius_ratio'].text() or 3), 6) if 'bend_radius_ratio' in self.editors
+                               else '3', '1')),
+                           ("Remove selected", self._remove_bend_rows),
+                           ("From 90° bend count", self._table_from_count)):
+            button = QPushButton(text)
+            button.clicked.connect(slot)
+            buttons.addWidget(button)
+        buttons.addStretch(1)
+        box_layout.addLayout(buttons)
+        layout.addWidget(box)
+
+    def _add_bend_row(self, angle='90', radius_ratio='3', count='1'):
+        row = self.bend_editor.rowCount()
+        self.bend_editor.insertRow(row)
+        for column, text in enumerate((angle, radius_ratio, count)):
+            self.bend_editor.setItem(row, column, QTableWidgetItem(str(text)))
+
+    def _remove_bend_rows(self):
+        for row in sorted({index.row() for index in self.bend_editor.selectedIndexes()}, reverse=True):
+            self.bend_editor.removeRow(row)
+
+    def _table_from_count(self):
+        try:
+            count = int(self.editors['bend_count'].value())
+            radius_ratio = self.editors['bend_radius_ratio'].text()
+        except (KeyError, ValueError, AttributeError):
+            return
+        if count > 0:
+            self._add_bend_row('90', radius_ratio, str(count))
+
+    def _accept(self):
+        rows = [[(self.bend_editor.item(row, column).text() if self.bend_editor.item(row, column) else '')
+                 for column in range(3)] for row in range(self.bend_editor.rowCount())]
+        try:
+            self.bend_table = parse_bend_table_rows(rows)
+        except ValueError as error:
+            QMessageBox.warning(self, "Bend table", str(error))
+            return
+        super()._accept()
+
+    def line_properties(self):
+        """The accepted values plus the bend table (absent when the table is empty)."""
+        properties = dict(self.values)
+        if self.bend_table:
+            properties['bend_table'] = [list(row) for row in self.bend_table]
+        return properties
 
 
 # ordinal blue ramp for the dark surface: low speed darker, high speed brighter
@@ -7243,6 +7569,11 @@ right-click → <b>Combine</b>.</p>
 direction); block results beside each block. Middle-drag pans, wheel zooms, F fits.</p>
 <p><b>Analysis</b> — Scenarios tab stores toggle states and properties. Analysis → Size bypass
 orifice… and Find lowest pump RPM… work on the current state and/or any saved scenarios.</p>
+<p><b>Line properties</b> — Properties… on a line sets its tube, length and a <b>bend table</b>
+(angle, bend radius / D, count). They are flow inputs only, not tied to the drawn route, so the line
+can still be reshaped. A line with set properties turns <b>blue</b> and asks “Are you sure?” before it
+is deleted. A name you give a line is shown beside it. Right-click → <b>Save Line…</b> adds it to the
+library (click it to place a copy, or right-click a line → Apply saved line).</p>
 <p><b>Line drawing</b> — File → Export line drawing… saves a clean black-and-white drawing of the
 schematic (SVG, PDF or PNG), with optional names, states, flow / pressure data and arrows.</p>
 <p><b>Error log</b> — errors and warnings are written to <i>Logs/pylon.log</i> next to the program.
@@ -7656,6 +7987,9 @@ class MainWindow(QMainWindow):
         if template.get('format') == 'pylon_assembly':
             self.scene.place_assembly(template, (snap_to_grid(view_center.x()), snap_to_grid(view_center.y())))
             return
+        if template.get('format') == 'pylon_line':
+            self.scene.place_line_template(template, (snap_to_grid(view_center.x()), snap_to_grid(view_center.y())))
+            return
         width, height = block_size(template['type'], int(template.get('orientation', 0)),
                                    normalized_icon_size(template.get('icon_size')))
         occupied = self.scene.block_rectangles()
@@ -7807,15 +8141,40 @@ class MainWindow(QMainWindow):
         if not self._unlock_for_editing(line):
             return
         calculated_values = (line.result or {}).get('calculated', {})
-        dialog = PropertyDialog(self, "Plumbing line properties", LINE_PROPERTIES, line.properties,
-                                calculated_values=calculated_values, name=line.name, tube_helper=True,
-                                note="Bends and length are used in the flow calculation only — they are "
-                                     "not tied to the drawn shape.")
+        dialog = LineDialog(self, "Plumbing line properties", line.properties,
+                            calculated_values=calculated_values, name=line.name)
         if dialog.exec():
             line.properties.update(dialog.values)
+            if dialog.bend_table:
+                line.properties['bend_table'] = dialog.line_properties()['bend_table']
+            else:
+                line.properties.pop('bend_table', None)
+            line.name_given = line.name_given or dialog.name != line.name
             line.name = dialog.name
+            line.properties_defined = True          # drawn blue; asks before deleting
             line.update_path()
+            line.update()
             self.scene.notify()
+
+    def save_line(self, line):
+        """Save a line (name, properties with its bend table, and drawn shape) to the library."""
+        name, accepted = QInputDialog.getText(self, "Save Line", "Name for the saved line:", text=line.name)
+        if not accepted or not name.strip():
+            return None
+        origin_x, origin_y = line.points[0] if line.points else (0.0, 0.0)
+        template = {'format': 'pylon_line', 'version': FILE_FORMAT_VERSION, 'name': name.strip(),
+                    'line_name': line.name if line.name_given else name.strip(), 'name_given': True,
+                    'properties': copy.deepcopy(line.properties),
+                    'points': [[x - origin_x, y - origin_y] for x, y in line.points]}
+        return self._write_library_file(name.strip(), template, "Save Line")
+
+    def confirm_delete_defined_lines(self, lines):
+        names = ', '.join(line.name for line in lines[:6]) + (' …' if len(lines) > 6 else '')
+        return QMessageBox.question(
+            self, "Delete line",
+            f"Are you sure?\n\n{names} {'has' if len(lines) == 1 else 'have'} defined properties "
+            f"(length, bends{', name' if any(line.name_given for line in lines) else ''}). Delete "
+            f"{'it' if len(lines) == 1 else 'them'}?") == QMessageBox.StandardButton.Yes
 
     def edit_pump_curves(self, block):
         if not self._unlock_for_editing(block):
@@ -8139,6 +8498,8 @@ class MainWindow(QMainWindow):
             for line in scene.lines.values():
                 for label in line.labels:
                     show(label, bool(options.get('data')) and bool(getattr(label, 'text', '')))
+                if line.name_label is not None:
+                    show(line.name_label, bool(options.get('names')))
             for outline in scene.assembly_outlines.values():
                 show(outline, False)
             show(scene.preview, False)
@@ -8149,7 +8510,7 @@ class MainWindow(QMainWindow):
                     if child.isVisible():
                         bounds = bounds.united(child.sceneBoundingRect())
             for line in scene.lines.values():
-                for label in line.labels:
+                for label in line.labels + ([line.name_label] if line.name_label is not None else []):
                     if label.isVisible():
                         bounds = bounds.united(label.sceneBoundingRect())
             bounds = bounds.adjusted(-20, -20, 20, 20)
