@@ -92,7 +92,7 @@ import uuid
 import numpy
 
 APPLICATION_NAME = "Pylon"
-APPLICATION_VERSION = "1.23"
+APPLICATION_VERSION = "1.24"
 FILE_FORMAT_VERSION = 3
 
 # Program log (errors and warnings).  Silent until the GUI attaches its handlers (see ErrorLog).
@@ -3225,7 +3225,7 @@ if __name__ == '__main__' and '--selftest' in sys.argv:
 # GUI (PySide6)
 # =============================================================================
 try:
-    from PySide6.QtCore import (QMimeData, QPointF, QRectF, QSize, Qt, QtMsgType, QTimer, QUrl, Signal,
+    from PySide6.QtCore import (QEvent, QMimeData, QPointF, QRectF, QSize, Qt, QtMsgType, QTimer, QUrl, Signal,
                                 qInstallMessageHandler)
     from PySide6.QtGui import (QAction, QActionGroup, QBrush, QColor, QDesktopServices, QDrag, QFont,
                                QFontMetricsF, QImage, QKeySequence, QLinearGradient, QPainter,
@@ -3558,28 +3558,38 @@ class PylonLogo(QWidget):
     def __init__(self, toolbar):
         super().__init__(toolbar)
         self.toolbar = toolbar
+        self._band_height = None
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
         self.setToolTip(f"{APPLICATION_NAME} {APPLICATION_VERSION}")
+        toolbar.installEventFilter(self)          # follow the toolbar's height (see eventFilter)
+
+    def band_height(self):
+        """Height of the band between the two gold rules: the toolbar's height less its 2 px bottom
+        rule.  Only the toolbar's current geometry is read — never its sizeHint(), which asks this
+        widget for its own size hint (that loop overflowed the stack in v1.23)."""
+        toolbar_height = self.toolbar.height()
+        return max(toolbar_height - 2.0, 24.0) if toolbar_height > 10 else 40.0
 
     def band(self):
-        """(centre y in this widget's coordinates, height) of the band between the two rules: the
-        toolbar's own area above its 2 px bottom rule."""
-        band_height = max(self.toolbar.height() - 2.0, 16.0)
+        """(centre y in this widget's coordinates, height) of the band between the two rules."""
+        band_height = self.band_height()
         return band_height / 2.0 - self.y(), band_height
 
     def sizeHint(self):
-        band_height = max(self.toolbar.height() - 2.0, self.toolbar.sizeHint().height() - 2.0, 30.0)
-        width = QFontMetricsF(logo_font(band_height)).horizontalAdvance(LOGO_TEXT) + LOGO_RIGHT_MARGIN + 8
+        width = QFontMetricsF(logo_font(self.band_height())).horizontalAdvance(LOGO_TEXT) + LOGO_RIGHT_MARGIN + 8
         return QSize(int(math.ceil(width)), 24)
 
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        self.updateGeometry()
-
-    def showEvent(self, event):
-        super().showEvent(event)
-        self.updateGeometry()          # the toolbar's height is only known once it is shown
+    def eventFilter(self, watched, event):
+        # when the toolbar changes height, the logo's font (and so its width) follows; update once
+        # per real change so the layout cannot loop
+        if watched is self.toolbar and event.type() == QEvent.Type.Resize:
+            band_height = self.band_height()
+            if band_height != self._band_height:
+                self._band_height = band_height
+                self.updateGeometry()
+                self.update()
+        return False
 
     def paintEvent(self, event):
         band_center, band_height = self.band()

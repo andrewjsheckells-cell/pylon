@@ -6,7 +6,7 @@ A PySide6 desktop tool for drawing a spacecraft liquid-propulsion feed-system sc
 
 | | |
 |---|---|
-| Program | `pylon.py` (single file, version 1.23) |
+| Program | `pylon.py` (single file, version 1.24) |
 | Requires | Python ≥ 3.9, `PySide6`, `numpy` |
 | Run | `pip install PySide6 numpy` then `python pylon.py [schematic.pylon.json]` |
 | Solver self-test (no GUI) | `python pylon.py --selftest` |
@@ -542,6 +542,9 @@ LAYOUT
   font (make_font bold, 112 % letter spacing, THEME heading gold over a 1 px black shadow), point size
   chosen so the cap height = 0.52 × the band between the menu-bar rule and the toolbar rule (toolbar
   height − its 2 px bottom rule); right edge 10 px from the window edge; capitals centred on the band.
+  PylonLogo.sizeHint() reads only toolbar.height() (never toolbar.sizeHint(), which asks the logo back
+  and recursed until the stack overflowed in 1.23); an event filter on the toolbar re-hints the logo
+  once per real height change.
 - Central widget: the canvas inside a bezel frame titled "Schematic". Docks have no title bars; the
   right docks are tabbed with tabs on top.
 - Right docks (tabbed): Results (separate bezel frames "System status", "Component data" and
@@ -912,3 +915,4 @@ CODE CONVENTIONS
 | 1.21 | 2026-10-13 | Pylon opens the most recently opened or saved schematic at start-up instead of the example (the example opens when there is none). *File → Open recent* lists the last 10 schematics; *Open…* starts in the last file's folder. |
 | 1.22 | 2026-10-14 | Lines: a **bend table** (angle, bend radius / D, count; Hooper two-K angle factors) next to length, independent of the drawn route, so lines stay freely reshapable. Lines with set properties turn **blue** and ask **"Are you sure?"** before deletion. **Save Line…** adds a line (properties, name, shape) to the library; click to place a copy or *Apply saved line* to existing lines. Names given to lines are shown on the canvas. Self-test check added. |
 | 1.23 | 2026-10-14 | "≡≡≡ PYLON ≡≡≡" logo at the right end of the toolbar, in the panel-title font, centred between the two gold rules and sized to fill that band with a margin. Toolbar buttons use short captions to leave room for it (full names in tooltips and menus). |
+| 1.24 | 2026-10-14 | Fix: the 1.23 logo crashed at start-up with a RecursionError (its size hint asked the toolbar for its size hint, which asks the logo back). The logo now reads only the toolbar's current height and follows height changes through an event filter. |
