@@ -72,4 +72,4 @@ Python 3.9 or newer is required. To try the pump-curve import, right-click a pum
 
 ## Status
 
-Version 1.24. The solver passes its built-in self-test (`--selftest`), which covers closed-form orifice flow, Hagen–Poiseuille, Colebrook, the Cv relation, mass balances, orifice sizing, pump-curve interpolation and file upgrades. Verify the loss-coefficient defaults against your own hardware data before relying on results for design decisions.
+Version 1.25. The solver passes its built-in self-test (`--selftest`), which covers closed-form orifice flow, Hagen–Poiseuille, Colebrook, the Cv relation, mass balances, orifice sizing, pump-curve interpolation and file upgrades. Verify the loss-coefficient defaults against your own hardware data before relying on results for design decisions.

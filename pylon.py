@@ -92,7 +92,7 @@ import uuid
 import numpy
 
 APPLICATION_NAME = "Pylon"
-APPLICATION_VERSION = "1.24"
+APPLICATION_VERSION = "1.25"
 FILE_FORMAT_VERSION = 3
 
 # Program log (errors and warnings).  Silent until the GUI attaches its handlers (see ErrorLog).
@@ -3517,42 +3517,108 @@ def warning_html(text):
     return f"<span style='color:{THEME['warning']}'>{text}</span>"
 
 
-LOGO_TEXT = "≡≡≡ PYLON ≡≡≡"
-LOGO_CAP_HEIGHT_FRACTION = 0.52      # capital height / band height: the rest is margin above and below
+LOGO_TEXT = "PYLON"
+LOGO_CAP_HEIGHT_FRACTION = 0.52      # letter height / band height: the rest is margin above and below
 LOGO_RIGHT_MARGIN = 10.0
 
 
-def logo_font(band_height):
-    """The panel-title font (bold, 112 % letter spacing, as in 'SYSTEM STATUS'), sized so its
-    capitals fill LOGO_CAP_HEIGHT_FRACTION of the band between the two gold rules."""
-    font = make_font(9.0, True)
-    font.setLetterSpacing(QFont.SpacingType.PercentageSpacing, 112)
-    cap_height_per_point = QFontMetricsF(font).capHeight() / 9.0 or 0.7
-    font.setPointSizeF(max(6.0, band_height * LOGO_CAP_HEIGHT_FRACTION / cap_height_per_point))
-    return font
+def _logo_letters():
+    """The PYLON logotype, drawn rather than typeset so it looks the same on every computer:
+    wide, geometric capitals with 45° chamfered corners, in the angular sci-fi style of the
+    panel bezels.  Units of letter height (y down, 0 = top, 1 = baseline); returns a list of
+    (advance width, [outer polygons], [counter polygons])."""
+    stroke, chamfer = 0.22, 0.16
+    letters = []
+    # P: stem plus a chamfered bowl; the bowl's counter is a hole
+    width, bowl = 0.95, 0.62
+    letters.append((width, [[(0, 0), (width - chamfer, 0), (width, chamfer), (width, bowl - chamfer),
+                             (width - chamfer, bowl), (stroke, bowl), (stroke, 1), (0, 1)]],
+                    [[(stroke, stroke), (width - stroke, stroke), (width - stroke, bowl - stroke),
+                      (stroke, bowl - stroke)]]))
+    # Y: two arms meeting over a centred stem
+    width, arm, junction = 1.10, 0.27, 0.56
+    letters.append((width, [[(0, 0), (arm, 0), (width / 2, 0.36), (width - arm, 0), (width, 0),
+                             (width / 2 + stroke / 2, junction), (width / 2 + stroke / 2, 1),
+                             (width / 2 - stroke / 2, 1), (width / 2 - stroke / 2, junction)]], []))
+    # L: stem and foot, the outer corner chamfered
+    width = 0.85
+    letters.append((width, [[(0, 0), (stroke, 0), (stroke, 1 - stroke), (width, 1 - stroke), (width, 1),
+                             (chamfer, 1), (0, 1 - chamfer)]], []))
+    # O: an octagon with an octagonal counter
+    width, corner = 1.05, 0.26
+    inner = max(corner - 0.4142 * stroke, 0.04)
+    letters.append((width, [[(corner, 0), (width - corner, 0), (width, corner), (width, 1 - corner),
+                             (width - corner, 1), (corner, 1), (0, 1 - corner), (0, corner)]],
+                    [[(stroke + inner, stroke), (width - stroke - inner, stroke), (width - stroke, stroke + inner),
+                      (width - stroke, 1 - stroke - inner), (width - stroke - inner, 1 - stroke),
+                      (stroke + inner, 1 - stroke), (stroke, 1 - stroke - inner), (stroke, stroke + inner)]]))
+    # N: two stems joined by a parallel-edged diagonal
+    width, lean = 1.05, 1.15 * stroke
+    letters.append((width, [[(0, 0), (lean, 0), (width - stroke, 0.62), (width - stroke, 0), (width, 0), (width, 1),
+                             (width - lean, 1), (stroke, 0.38), (stroke, 1), (0, 1)]], []))
+    return letters
+
+
+LOGO_LETTER_SPACING = 0.20
+
+
+def logo_width(letter_height):
+    letters = _logo_letters()
+    return letter_height * (sum(width for width, _, _ in letters) + LOGO_LETTER_SPACING * (len(letters) - 1))
+
+
+def logo_path(letter_height):
+    """QPainterPath of the logotype with its top-left at (0, 0); counters are holes."""
+    path = QPainterPath()
+    x = 0.0
+    for width, outers, counters in _logo_letters():
+        letter = QPainterPath()
+        for polygon in outers:
+            letter.addPolygon(QPolygonF([QPointF(x + px * letter_height, py * letter_height) for px, py in polygon]))
+            letter.closeSubpath()
+        if counters:
+            holes = QPainterPath()
+            for polygon in counters:
+                holes.addPolygon(QPolygonF([QPointF(x + px * letter_height, py * letter_height)
+                                            for px, py in polygon]))
+                holes.closeSubpath()
+            letter = letter.subtracted(holes)
+        path.addPath(letter)
+        x += (width + LOGO_LETTER_SPACING) * letter_height
+    return path
 
 
 def draw_pylon_logo(painter, right, band_center_y, band_height):
-    """Draw the logo right-aligned at x = right, its capitals centred on band_center_y; the same
-    engraved gold-on-shadow style as the panel titles."""
-    font = logo_font(band_height)
-    metrics = QFontMetricsF(font)
-    text_width = metrics.horizontalAdvance(LOGO_TEXT)
-    baseline = band_center_y + metrics.capHeight() / 2
+    """The PYLON logotype right-aligned at x = right and centred on band_center_y, its letters
+    LOGO_CAP_HEIGHT_FRACTION of the band tall: brushed-gold fill (the bezel-rim gradient), a
+    dark engraved outline and a soft shadow.  Returns its width."""
+    letter_height = max(band_height * LOGO_CAP_HEIGHT_FRACTION, 6.0)
+    width = logo_width(letter_height)
+    path = logo_path(letter_height)
     painter.save()
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
-    painter.setFont(font)
-    painter.setPen(QColor(0, 0, 0, 200))
-    painter.drawText(QPointF(right - text_width + 1, baseline + 1), LOGO_TEXT)
-    painter.setPen(QColor(THEME['heading']))
-    painter.drawText(QPointF(right - text_width, baseline), LOGO_TEXT)
+    painter.translate(right - width, band_center_y - letter_height / 2)
+    painter.save()
+    painter.translate(1.2, 1.4)
+    painter.fillPath(path, QBrush(QColor(0, 0, 0, 190)))                  # shadow
     painter.restore()
-    return text_width
+    gold = QLinearGradient(QPointF(0, 0), QPointF(0, letter_height))
+    gold.setColorAt(0.0, QColor('#fff3c4'))
+    gold.setColorAt(0.38, QColor(THEME['gold_highlight']))
+    gold.setColorAt(0.55, QColor(THEME['gold']))
+    gold.setColorAt(1.0, QColor('#8a5a14'))
+    painter.fillPath(path, QBrush(gold))
+    outline = QPen(QColor(40, 24, 4, 230), max(letter_height / 22.0, 0.8))
+    outline.setJoinStyle(Qt.PenJoinStyle.MiterJoin)
+    painter.setPen(outline)
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.drawPath(path)
+    painter.restore()
+    return width
 
 
 class PylonLogo(QWidget):
-    """"≡≡≡ PYLON ≡≡≡" at the right end of the toolbar, centred between the gold rule under the
+    """The PYLON logotype at the right end of the toolbar, centred between the gold rule under the
     menu bar and the gold rule under the toolbar, sized to that band with a margin."""
 
     def __init__(self, toolbar):
@@ -3577,7 +3643,7 @@ class PylonLogo(QWidget):
         return band_height / 2.0 - self.y(), band_height
 
     def sizeHint(self):
-        width = QFontMetricsF(logo_font(self.band_height())).horizontalAdvance(LOGO_TEXT) + LOGO_RIGHT_MARGIN + 8
+        width = logo_width(max(self.band_height() * LOGO_CAP_HEIGHT_FRACTION, 6.0)) + LOGO_RIGHT_MARGIN + 8
         return QSize(int(math.ceil(width)), 24)
 
     def eventFilter(self, watched, event):
