@@ -92,7 +92,7 @@ import uuid
 import numpy
 
 APPLICATION_NAME = "Pylon"
-APPLICATION_VERSION = "1.22"
+APPLICATION_VERSION = "1.23"
 FILE_FORMAT_VERSION = 3
 
 # Program log (errors and warnings).  Silent until the GUI attaches its handlers (see ErrorLog).
@@ -3225,7 +3225,7 @@ if __name__ == '__main__' and '--selftest' in sys.argv:
 # GUI (PySide6)
 # =============================================================================
 try:
-    from PySide6.QtCore import (QMimeData, QPointF, QRectF, Qt, QtMsgType, QTimer, QUrl, Signal,
+    from PySide6.QtCore import (QMimeData, QPointF, QRectF, QSize, Qt, QtMsgType, QTimer, QUrl, Signal,
                                 qInstallMessageHandler)
     from PySide6.QtGui import (QAction, QActionGroup, QBrush, QColor, QDesktopServices, QDrag, QFont,
                                QFontMetricsF, QImage, QKeySequence, QLinearGradient, QPainter,
@@ -3238,7 +3238,7 @@ try:
                                    QHBoxLayout, QHeaderView, QInputDialog, QLabel, QLineEdit,
                                    QListWidget, QListWidgetItem, QMainWindow, QMenu,
                                    QMessageBox, QProgressDialog, QPushButton, QScrollArea,
-                                   QSpinBox, QSplitter, QTabWidget, QTableWidget,
+                                   QSizePolicy, QSpinBox, QSplitter, QTabWidget, QTableWidget,
                                    QTableWidgetItem, QTextEdit, QPlainTextEdit, QToolTip, QVBoxLayout,
                                    QWidget)
 except ImportError:
@@ -3515,6 +3515,77 @@ def muted_html(text):
 
 def warning_html(text):
     return f"<span style='color:{THEME['warning']}'>{text}</span>"
+
+
+LOGO_TEXT = "≡≡≡ PYLON ≡≡≡"
+LOGO_CAP_HEIGHT_FRACTION = 0.52      # capital height / band height: the rest is margin above and below
+LOGO_RIGHT_MARGIN = 10.0
+
+
+def logo_font(band_height):
+    """The panel-title font (bold, 112 % letter spacing, as in 'SYSTEM STATUS'), sized so its
+    capitals fill LOGO_CAP_HEIGHT_FRACTION of the band between the two gold rules."""
+    font = make_font(9.0, True)
+    font.setLetterSpacing(QFont.SpacingType.PercentageSpacing, 112)
+    cap_height_per_point = QFontMetricsF(font).capHeight() / 9.0 or 0.7
+    font.setPointSizeF(max(6.0, band_height * LOGO_CAP_HEIGHT_FRACTION / cap_height_per_point))
+    return font
+
+
+def draw_pylon_logo(painter, right, band_center_y, band_height):
+    """Draw the logo right-aligned at x = right, its capitals centred on band_center_y; the same
+    engraved gold-on-shadow style as the panel titles."""
+    font = logo_font(band_height)
+    metrics = QFontMetricsF(font)
+    text_width = metrics.horizontalAdvance(LOGO_TEXT)
+    baseline = band_center_y + metrics.capHeight() / 2
+    painter.save()
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+    painter.setFont(font)
+    painter.setPen(QColor(0, 0, 0, 200))
+    painter.drawText(QPointF(right - text_width + 1, baseline + 1), LOGO_TEXT)
+    painter.setPen(QColor(THEME['heading']))
+    painter.drawText(QPointF(right - text_width, baseline), LOGO_TEXT)
+    painter.restore()
+    return text_width
+
+
+class PylonLogo(QWidget):
+    """"≡≡≡ PYLON ≡≡≡" at the right end of the toolbar, centred between the gold rule under the
+    menu bar and the gold rule under the toolbar, sized to that band with a margin."""
+
+    def __init__(self, toolbar):
+        super().__init__(toolbar)
+        self.toolbar = toolbar
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
+        self.setToolTip(f"{APPLICATION_NAME} {APPLICATION_VERSION}")
+
+    def band(self):
+        """(centre y in this widget's coordinates, height) of the band between the two rules: the
+        toolbar's own area above its 2 px bottom rule."""
+        band_height = max(self.toolbar.height() - 2.0, 16.0)
+        return band_height / 2.0 - self.y(), band_height
+
+    def sizeHint(self):
+        band_height = max(self.toolbar.height() - 2.0, self.toolbar.sizeHint().height() - 2.0, 30.0)
+        width = QFontMetricsF(logo_font(band_height)).horizontalAdvance(LOGO_TEXT) + LOGO_RIGHT_MARGIN + 8
+        return QSize(int(math.ceil(width)), 24)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.updateGeometry()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.updateGeometry()          # the toolbar's height is only known once it is shown
+
+    def paintEvent(self, event):
+        band_center, band_height = self.band()
+        painter = QPainter(self)
+        draw_pylon_logo(painter, self.width() - LOGO_RIGHT_MARGIN, band_center, band_height)
+        painter.end()
 
 
 class BezelFrame(QFrame):
@@ -7674,6 +7745,11 @@ class LineDrawingDialog(BezelDialog):
         return {key: box.isChecked() for key, box in self.boxes.items()}
 
 
+TOOLBAR_SHORT_TEXT = {'Select / Move': 'Select', '⟲ Rotate left': '⟲ Rotate', 'Rotate right ⟳': 'Rotate ⟳',
+                      '⇋ Flip horizontal': '⇋ Flip', '⇵ Flip vertical': '⇵ Flip',
+                      'Show flow / pressure data': 'Show data', 'Auto-solve on every change': 'Auto-solve'}
+
+
 class MainWindow(QMainWindow):
     def __init__(self, path=None):
         super().__init__()
@@ -7873,6 +7949,19 @@ class MainWindow(QMainWindow):
         toolbar.addAction(self._make_action("Fluid…", self.edit_settings))
         toolbar.addAction(self._make_action("Size Orifice…", lambda: self.size_orifice(None)))
         toolbar.addAction(self._make_action("Lowest RPM…", lambda: self.find_lowest_speed(None)))
+        # short toolbar captions (menus keep the full text) so the row leaves room for the logo
+        for action in toolbar.actions():
+            short = TOOLBAR_SHORT_TEXT.get(action.text())
+            if short:
+                action.setToolTip(action.statusTip() or action.text())
+                action.setIconText(short)
+        # logo: pushed to the right end by an expanding spacer
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        toolbar.addWidget(spacer)
+        self.logo = PylonLogo(toolbar)
+        toolbar.addWidget(self.logo)
+        self.toolbar = toolbar
 
     def set_mode(self, mode):
         self.scene.set_mode(mode)

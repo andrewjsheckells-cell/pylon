@@ -6,7 +6,7 @@ A PySide6 desktop tool for drawing a spacecraft liquid-propulsion feed-system sc
 
 | | |
 |---|---|
-| Program | `pylon.py` (single file, version 1.22) |
+| Program | `pylon.py` (single file, version 1.23) |
 | Requires | Python ≥ 3.9, `PySide6`, `numpy` |
 | Run | `pip install PySide6 numpy` then `python pylon.py [schematic.pylon.json]` |
 | Solver self-test (no GUI) | `python pylon.py --selftest` |
@@ -55,7 +55,8 @@ The interface uses a dark sci-fi console style taken from the user's reference s
 * **Right: Results and Scenarios tabs** (tabs on top; each panel in its own bezel frame).
   * *Results:* a solver status line, total thruster flow vs nominal, thrust, and the pump balance (pump flow = thruster flow + orifice flow). Below that are a table of every block and line section and a list of warnings. Double-click a row or warning to select that item on the canvas.
   * *Scenarios:* save, update, apply, rename, duplicate and delete scenarios.
-* **Toolbar:** Undo, Redo │ Select/Move, Draw Line, ⟲ Rotate left, Rotate right ⟳, ⇋ Flip horizontal, ⇵ Flip vertical │ Show flow / pressure data │ Solve, Auto-solve, Fit │ Fluid…, Size Orifice…, Lowest RPM….
+* **Toolbar:** Undo, Redo │ Select, Draw Line, ⟲ Rotate, Rotate ⟳, ⇋ Flip (horizontal), ⇵ Flip (vertical) │ Show data │ Solve, Auto-solve, Fit │ Fluid…, Size Orifice…, Lowest RPM…. The buttons use short captions (hover for the full name; the menus keep the full names).
+* **Logo:** "≡≡≡ PYLON ≡≡≡" sits at the right end of the toolbar row, right-justified and centred between the gold rule under the menu bar and the gold rule under the toolbar. It uses the panel-title font (as in *SYSTEM STATUS*: bold, 112 % letter spacing, gold with a dark shadow), sized so its capitals fill about half that band, leaving a margin above and below.
 
 ### 2.1a Undo, rotate, flip, icon size and data visibility
 * **Undo / Redo** (toolbar, Edit menu, **Ctrl+Z** / **Ctrl+Y** or Ctrl+Shift+Z).
@@ -537,6 +538,10 @@ LAYOUT
   dragging it drops it at the cursor. Right-clicking a saved entry deletes the file.
 - Centre: QGraphicsView canvas with a 20 px dot grid; blocks snap to 10 px. Wheel zooms, middle-drag
   pans, F fits, rubber-band and Ctrl-click multi-select.
+- Logo: an expanding spacer then PylonLogo at the end of the toolbar: "≡≡≡ PYLON ≡≡≡" in the bezel title
+  font (make_font bold, 112 % letter spacing, THEME heading gold over a 1 px black shadow), point size
+  chosen so the cap height = 0.52 × the band between the menu-bar rule and the toolbar rule (toolbar
+  height − its 2 px bottom rule); right edge 10 px from the window edge; capitals centred on the band.
 - Central widget: the canvas inside a bezel frame titled "Schematic". Docks have no title bars; the
   right docks are tabbed with tabs on top.
 - Right docks (tabbed): Results (separate bezel frames "System status", "Component data" and
@@ -549,8 +554,8 @@ LAYOUT
   Paste Ctrl+V and Ctrl+P, Duplicate selection Ctrl+D, Rotate left Shift+R, Rotate right R, ⇋ Flip horizontal H, ⇵ Flip
   vertical V, Icon size ▸ Small/Medium/Large, Select all);
   View (fit, zoom, Show flow / pressure data D, docks);
-  Toolbar: Undo, Redo | Select/Move, Draw Line, ⟲ Rotate left, Rotate right ⟳, ⇋ Flip horizontal,
-  ⇵ Flip vertical | Show flow / pressure
+  Toolbar (short captions via setIconText, full text in tooltips and menus): Undo, Redo | Select, Draw
+  Line, ⟲ Rotate, Rotate ⟳, ⇋ Flip, ⇵ Flip | Show data
   data (checkable) | Solve, Auto-solve, Fit | Fluid…, Size Orifice…, Lowest RPM…;
   Analysis (Solve F5, Auto-solve toggle, Size bypass orifice…, Find lowest pump RPM…,
   Fluid and loss coefficients…); Help (Quick guide F1, Generate error report… Ctrl+Shift+E, Open log
@@ -906,3 +911,4 @@ CODE CONVENTIONS
 | 1.20 | 2026-10-13 | Tees, crosses and 90° fittings no longer show name or result labels on the canvas (including on hover and in line drawings); their flows are in the tooltip, Properties and the Results tab. |
 | 1.21 | 2026-10-13 | Pylon opens the most recently opened or saved schematic at start-up instead of the example (the example opens when there is none). *File → Open recent* lists the last 10 schematics; *Open…* starts in the last file's folder. |
 | 1.22 | 2026-10-14 | Lines: a **bend table** (angle, bend radius / D, count; Hooper two-K angle factors) next to length, independent of the drawn route, so lines stay freely reshapable. Lines with set properties turn **blue** and ask **"Are you sure?"** before deletion. **Save Line…** adds a line (properties, name, shape) to the library; click to place a copy or *Apply saved line* to existing lines. Names given to lines are shown on the canvas. Self-test check added. |
+| 1.23 | 2026-10-14 | "≡≡≡ PYLON ≡≡≡" logo at the right end of the toolbar, in the panel-title font, centred between the two gold rules and sized to fill that band with a margin. Toolbar buttons use short captions to leave room for it (full names in tooltips and menus). |
