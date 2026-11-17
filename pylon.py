@@ -92,7 +92,7 @@ import uuid
 import numpy
 
 APPLICATION_NAME = "Pylon"
-APPLICATION_VERSION = "1.26"
+APPLICATION_VERSION = "1.27"
 FILE_FORMAT_VERSION = 3
 
 # Program log (errors and warnings).  Silent until the GUI attaches its handlers (see ErrorLog).
@@ -3255,11 +3255,18 @@ LOG_DIRECTORY = os.path.join(SCRIPT_DIRECTORY, 'Logs')
 BLOCK_MIME_TYPE = 'application/x-pylon-block'
 
 # -----------------------------------------------------------------------------
-# Theme: dark panels in gold bezels with a red inner trim and cyan accents
+# Colour themes (View → Colour theme; the choice is kept in the user settings file)
+#   console — dark panels in gold bezels with a red inner trim and cyan accents
+#   neutral — light grey panels, flat thin frames, and the schematic in black on white
+# Both dictionaries have the same keys.  The key names come from the console theme
+# ('gold' = frame and border colour, 'cyan' = accent / selection colour), so in the
+# neutral theme 'gold' is a grey and 'cyan' is a blue.
 # -----------------------------------------------------------------------------
-THEME = {
+CONSOLE_THEME = {
+    'style': 'console',
     'background_deep': '#04060c', 'background_middle': '#0a1020', 'background_panel': '#0b1424',
-    'background_panel_top': '#14243c', 'background_field': '#060b14', 'background_alternate_row': '#0a1322',
+    'background_panel_top': '#14243c', 'background_panel_bottom': '#060a12', 'background_field': '#060b14',
+    'background_alternate_row': '#0a1322',
     'gold_highlight': '#ffe9a8', 'gold': '#d9a441', 'gold_middle': '#a8741f', 'gold_dark': '#5a3a0c',
     'trim': '#b8361f',
     'cyan': '#5fd4ff', 'cyan_soft': '#8fd3ff', 'cyan_dim': '#2a6f8f',
@@ -3267,19 +3274,117 @@ THEME = {
     'go': '#7dff8a', 'warning': '#ff6b5a', 'success': '#66e07a',
     'row_warning': '#3a1414', 'row_good': '#123a24', 'row_dimmed': '#0d1626',
     'off': '#4d5b6b',
+    # canvas
+    'symbol': '#7fe0ff', 'line_defined': '#2f6cf0', 'line_defined_hover': '#6f9bff',
+    'canvas_top': '#060a16', 'canvas_bottom': '#04060c',
+    'grid_dot': 'rgba(70, 150, 190, 70)', 'grid_cross': 'rgba(217, 164, 65, 60)',
+    'label_plate': 'rgba(6, 11, 20, 230)', 'label_plate_border': 'rgba(217, 164, 65, 170)',
+    'plot_grid': '#1b2a3d',
+    # widgets (application style sheet and palette)
+    'main_window_background': 'qradialgradient(cx:0.55, cy:0.35, radius:1.1, fx:0.55, fy:0.3, '
+                              'stop:0 #1b1546, stop:0.45 #0a0f1f, stop:1 #020308)',
+    'bar_background': '#070b14', 'bar_rule_width': '2px', 'bar_text': '#f2c14e',
+    'menu_hover': '#1a2a44', 'selection_background': '#1d3b5c', 'selection_text': '#ffffff',
+    'text_selection': '#1d5f8a', 'button': '#13233b', 'placeholder': '#5f7488',
+    'button_background': 'qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1a2c48, stop:1 #08101c)',
+    'button_hover_background': 'qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #22406a, stop:1 #0b1626)',
+    'button_pressed_background': '#050910', 'button_checked_background': '#10304c',
+    'button_hover_text': '#ffffff', 'button_border_width': '2px', 'button_radius': '9px', 'field_radius': '5px',
+    'readonly_background': '#0d1626', 'readonly_border': '#2a3a4c',
+    'table_grid': '#1b2a3d', 'header_background': '#0f1a2c', 'tab_selected_background': '#13223a',
+    'scrollbar_border': '#2a1d06',
+    'scrollbar_handle_vertical': 'qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #5a3a0c, stop:0.5 #d9a441, '
+                                 'stop:1 #5a3a0c)',
+    'scrollbar_handle_horizontal': 'qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5a3a0c, stop:0.5 #d9a441, '
+                                   'stop:1 #5a3a0c)',
+    'rubber_band': 'rgba(95, 212, 255, 40)',
+    'entry_background': 'qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #14243c, stop:1 #070d18)',
+    'entry_hover_background': '#10304c',
+    'dialog_top': '#101a30', 'dialog_bottom': '#03050a',
+    'plot_ramp': ['#256abf', '#2a78d6', '#5598e7', '#86b6ef', '#b7d3f6', '#cde2fb'],
 }
+NEUTRAL_THEME = {
+    'style': 'neutral',
+    'background_deep': '#ffffff', 'background_middle': '#f1f3f5', 'background_panel': '#fafbfc',
+    'background_panel_top': '#fafbfc', 'background_panel_bottom': '#fafbfc', 'background_field': '#ffffff',
+    'background_alternate_row': '#f4f6f8',
+    'gold_highlight': '#7d8691', 'gold': '#a3abb5', 'gold_middle': '#c3c9d0', 'gold_dark': '#dde1e6',
+    'trim': '#dde1e6',
+    'cyan': '#1f6fd1', 'cyan_soft': '#3c4652', 'cyan_dim': '#7aa7de',
+    'text': '#1b1f24', 'muted': '#5f6b78', 'heading': '#1b1f24',
+    'go': '#1e7d32', 'warning': '#c62828', 'success': '#2e7d32',
+    'row_warning': '#fde3e1', 'row_good': '#e2f3e5', 'row_dimmed': '#eef0f3',
+    'off': '#9aa1a9',
+    # canvas: black on white
+    'symbol': '#000000', 'line_defined': '#1d4fb8', 'line_defined_hover': '#4a78d6',
+    'canvas_top': '#ffffff', 'canvas_bottom': '#ffffff',
+    'grid_dot': 'rgba(0, 0, 0, 38)', 'grid_cross': 'rgba(0, 0, 0, 60)',
+    'label_plate': 'rgba(255, 255, 255, 235)', 'label_plate_border': 'rgba(0, 0, 0, 90)',
+    'plot_grid': '#e3e6ea',
+    # widgets
+    'main_window_background': '#e9ecef',
+    'bar_background': '#f6f7f9', 'bar_rule_width': '1px', 'bar_text': '#1b1f24',
+    'menu_hover': '#dfe6ef', 'selection_background': '#d6e4f7', 'selection_text': '#1b1f24',
+    'text_selection': '#b9d3f3', 'button': '#f6f7f9', 'placeholder': '#8a949e',
+    'button_background': '#ffffff', 'button_hover_background': '#eef3fa',
+    'button_pressed_background': '#dfe6ef', 'button_checked_background': '#dbe8f8',
+    'button_hover_text': '#1b1f24', 'button_border_width': '1px', 'button_radius': '4px', 'field_radius': '3px',
+    'readonly_background': '#f1f3f5', 'readonly_border': '#d5dae0',
+    'table_grid': '#e3e6ea', 'header_background': '#f1f3f5', 'tab_selected_background': '#ffffff',
+    'scrollbar_border': '#dde1e6',
+    'scrollbar_handle_vertical': '#c3c9d0', 'scrollbar_handle_horizontal': '#c3c9d0',
+    'rubber_band': 'rgba(31, 111, 209, 30)',
+    'entry_background': '#ffffff', 'entry_hover_background': '#eef3fa',
+    'dialog_top': '#f1f3f5', 'dialog_bottom': '#f1f3f5',
+    'plot_ramp': ['#0b2f6b', '#174a9c', '#256abf', '#3f86d6', '#6aa3e3', '#8fbbe9'],
+}
+COLOR_THEMES = {'console': CONSOLE_THEME, 'neutral': NEUTRAL_THEME}
+COLOR_THEME_LABELS = {'console': "Console (dark)", 'neutral': "Neutral (light, black-on-white schematic)"}
+DEFAULT_COLOR_THEME = 'console'
+THEME = dict(CONSOLE_THEME)
+
+
+def theme_color(key):
+    """QColor for a theme entry; also understands the 'rgba(r, g, b, a)' form used in style sheets."""
+    value = THEME[key]
+    match = re.fullmatch(r'\s*rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)\s*', value)
+    if match:
+        return QColor(*(int(group) for group in match.groups()))
+    return QColor(value)
+
+
+def neutral_theme():
+    return THEME.get('style') == 'neutral'
+
+
 COLOR_LINE = QColor(THEME['gold'])
 COLOR_LINE_SELECTED = QColor(THEME['cyan'])
-COLOR_LINE_DEFINED = QColor('#2f6cf0')             # lines whose properties have been set: blue
-COLOR_LINE_DEFINED_HOVER = QColor('#6f9bff')
+COLOR_LINE_DEFINED = QColor(THEME['line_defined'])     # lines whose properties have been set: blue
+COLOR_LINE_DEFINED_HOVER = QColor(THEME['line_defined_hover'])
 AUTOMATIC_LINE_NAME = re.compile(r'L\d+')        # names Pylon gives lines (L1, L2 …) are not shown
 COLOR_WARNING = QColor(THEME['warning'])
 COLOR_SELECTED = QColor(THEME['cyan'])
 COLOR_TEXT = QColor(THEME['text'])
 COLOR_MUTED = QColor(THEME['muted'])
 COLOR_HEADING = QColor(THEME['heading'])
-COLOR_SYMBOL = QColor('#7fe0ff')
+COLOR_SYMBOL = QColor(THEME['symbol'])
 FONT_FAMILIES = ['Bahnschrift', 'Segoe UI', 'Helvetica Neue', 'DejaVu Sans', 'Arial']
+
+# the shared QColor objects above are updated in place, so items that hold them follow a theme change
+_THEME_COLOR_KEYS = ((COLOR_LINE, 'gold'), (COLOR_LINE_SELECTED, 'cyan'), (COLOR_LINE_DEFINED, 'line_defined'),
+                     (COLOR_LINE_DEFINED_HOVER, 'line_defined_hover'), (COLOR_WARNING, 'warning'),
+                     (COLOR_SELECTED, 'cyan'), (COLOR_TEXT, 'text'), (COLOR_MUTED, 'muted'),
+                     (COLOR_HEADING, 'heading'), (COLOR_SYMBOL, 'symbol'))
+
+
+def set_color_theme(name):
+    """Switch THEME (and the shared COLOR_* objects) to the named theme; returns the name used."""
+    name = name if name in COLOR_THEMES else DEFAULT_COLOR_THEME
+    THEME.clear()
+    THEME.update(COLOR_THEMES[name])
+    for color, key in _THEME_COLOR_KEYS:
+        color.setRgba(QColor(THEME[key]).rgba())
+    return name
 
 
 def draw_bezel(painter, rectangle, radius=12.0, rim=6.0, fill=True, glow=None, title=None,
@@ -3288,7 +3393,11 @@ def draw_bezel(painter, rectangle, radius=12.0, rim=6.0, fill=True, glow=None, t
 
     Used for every panel, dialog and component block so the whole UI shares
     one frame language.  `glow` (QColor) adds a soft halo (selection/warning).
+    In the neutral theme it draws a flat panel with a thin grey border instead.
     """
+    if neutral_theme():
+        draw_flat_panel(painter, rectangle, fill=fill, glow=glow, title=title)
+        return
     painter.save()
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     outer_rectangle = QRectF(rectangle)
@@ -3383,74 +3492,104 @@ def draw_bezel(painter, rectangle, radius=12.0, rim=6.0, fill=True, glow=None, t
     painter.restore()
 
 
-APPLICATION_STYLE_SHEET = """
+def draw_flat_panel(painter, rectangle, fill=True, glow=None, title=None):
+    """Neutral-theme frame: a light panel with a thin grey border, small corner radius and an
+    optional plain bold title over a hairline rule."""
+    painter.save()
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    panel = QRectF(rectangle).adjusted(0.5, 0.5, -0.5, -0.5)
+    if glow is not None:
+        halo_color = QColor(glow)
+        halo_color.setAlpha(90)
+        painter.setPen(QPen(halo_color, 3.0))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawRoundedRect(panel.adjusted(-2, -2, 2, 2), 6, 6)
+    painter.setPen(QPen(QColor(THEME['gold']), 1.0))
+    painter.setBrush(QColor(THEME['background_panel']) if fill else Qt.BrushStyle.NoBrush)
+    painter.drawRoundedRect(panel, 4, 4)
+    if title:
+        title_font = make_font(9.0, True)
+        painter.setFont(title_font)
+        metrics = QFontMetricsF(title_font)
+        text_x, text_y = panel.left() + 12, panel.top() + 8
+        painter.setPen(QColor(THEME['heading']))
+        painter.drawText(QPointF(text_x, text_y + metrics.ascent()), title)
+        rule_y = text_y + metrics.height() + 3
+        painter.setPen(QPen(QColor(THEME['gold_middle']), 1.0))
+        painter.drawLine(QPointF(panel.left() + 8, rule_y), QPointF(panel.right() - 8, rule_y))
+    painter.restore()
+
+
+APPLICATION_STYLE_SHEET_TEMPLATE = """
 * { font-family: "Bahnschrift", "Segoe UI", "Helvetica Neue", "DejaVu Sans", sans-serif; font-size: 9pt; }
-QMainWindow { background: qradialgradient(cx:0.55, cy:0.35, radius:1.1, fx:0.55, fy:0.3,
-              stop:0 #1b1546, stop:0.45 #0a0f1f, stop:1 #020308); }
+QMainWindow { background: %(main_window_background)s; }
 QWidget { color: %(text)s; }
 QDialog { background: %(background_middle)s; }
 QLabel { background: transparent; }
+QLabel[tone="muted"] { color: %(muted)s; }
 QToolTip { background: %(background_panel)s; color: %(text)s; border: 1px solid %(gold)s; padding: 4px; }
-QMenuBar { background: #070b14; color: %(heading)s; border-bottom: 2px solid %(gold_middle)s; padding: 2px; }
+QMenuBar { background: %(bar_background)s; color: %(bar_text)s; border-bottom: %(bar_rule_width)s solid %(gold_middle)s; padding: 2px; }
 QMenuBar::item { background: transparent; padding: 4px 10px; }
-QMenuBar::item:selected { background: #1a2a44; color: #ffffff; border-radius: 4px; }
-QMenu { background: %(background_panel)s; border: 2px solid %(gold)s; color: %(text)s; padding: 4px; }
+QMenuBar::item:selected { background: %(menu_hover)s; color: %(button_hover_text)s; border-radius: 4px; }
+QMenu { background: %(background_panel)s; border: %(button_border_width)s solid %(gold)s; color: %(text)s; padding: 4px; }
 QMenu::item { padding: 5px 22px 5px 18px; border-radius: 4px; }
-QMenu::item:selected { background: #1d3b5c; color: #ffffff; }
+QMenu::item:selected { background: %(selection_background)s; color: %(selection_text)s; }
 QMenu::item:disabled { color: %(off)s; }
 QMenu::separator { height: 1px; background: %(gold_dark)s; margin: 4px 8px; }
-QToolBar { background: #070b14; border: none; border-bottom: 2px solid %(gold_middle)s; spacing: 6px; padding: 5px; }
+QToolBar { background: %(bar_background)s; border: none; border-bottom: %(bar_rule_width)s solid %(gold_middle)s; spacing: 6px; padding: 5px; }
 QToolBar::separator { background: %(gold_dark)s; width: 2px; margin: 4px 6px; }
 QToolButton, QPushButton {
     color: %(text)s; padding: 4px 12px; min-height: 20px;
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1a2c48, stop:1 #08101c);
-    border: 2px solid %(gold)s; border-radius: 9px; }
-QToolButton:hover, QPushButton:hover { border-color: %(gold_highlight)s; color: #ffffff;
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #22406a, stop:1 #0b1626); }
-QToolButton:pressed, QPushButton:pressed { background: #050910; }
-QToolButton:checked { color: %(cyan)s; border-color: %(cyan)s; background: #10304c; }
+    background: %(button_background)s;
+    border: %(button_border_width)s solid %(gold)s; border-radius: %(button_radius)s; }
+QToolButton:hover, QPushButton:hover { border-color: %(gold_highlight)s; color: %(button_hover_text)s;
+    background: %(button_hover_background)s; }
+QToolButton:pressed, QPushButton:pressed { background: %(button_pressed_background)s; }
+QToolButton:checked { color: %(cyan)s; border-color: %(cyan)s; background: %(button_checked_background)s; }
 QPushButton:disabled, QToolButton:disabled { color: %(off)s; border-color: %(gold_dark)s; }
 QPushButton[accent="go"] { color: %(go)s; font-weight: 600; }
 QPushButton[accent="stop"] { color: %(warning)s; font-weight: 600; }
 QLineEdit, QComboBox, QSpinBox {
-    background: %(background_field)s; color: %(text)s; border: 1px solid %(gold_middle)s; border-radius: 5px;
-    padding: 3px 6px; selection-background-color: #1d5f8a; }
+    background: %(background_field)s; color: %(text)s; border: 1px solid %(gold_middle)s; border-radius: %(field_radius)s;
+    padding: 3px 6px; selection-background-color: %(text_selection)s; }
 QLineEdit:focus, QComboBox:focus, QSpinBox:focus { border-color: %(cyan)s; }
-QLineEdit[readOnly="true"] { background: #0d1626; color: %(cyan_soft)s; border-color: #2a3a4c; }
+QLineEdit[readOnly="true"] { background: %(readonly_background)s; color: %(cyan_soft)s; border-color: %(readonly_border)s; }
 QComboBox::drop-down { border: none; width: 18px; }
 QComboBox QAbstractItemView { background: %(background_panel)s; color: %(text)s; border: 1px solid %(gold)s;
-    selection-background-color: #1d3b5c; }
+    selection-background-color: %(selection_background)s; selection-color: %(selection_text)s; }
 QTableWidget, QListWidget {
     background: %(background_field)s; alternate-background-color: %(background_alternate_row)s; color: %(text)s;
-    gridline-color: #1b2a3d; border: 1px solid %(gold_dark)s; border-radius: 6px;
-    selection-background-color: #1d3b5c; selection-color: #ffffff; }
-QHeaderView::section { background: #0f1a2c; color: %(heading)s; border: none;
-    border-bottom: 1px solid %(gold_middle)s; border-right: 1px solid #1b2a3d; padding: 4px 6px; font-weight: 600; }
-QTableCornerButton::section { background: #0f1a2c; border: none; }
+    gridline-color: %(table_grid)s; border: 1px solid %(gold_dark)s; border-radius: 6px;
+    selection-background-color: %(selection_background)s; selection-color: %(selection_text)s; }
+QHeaderView::section { background: %(header_background)s; color: %(heading)s; border: none;
+    border-bottom: 1px solid %(gold_middle)s; border-right: 1px solid %(table_grid)s; padding: 4px 6px; font-weight: 600; }
+QTableCornerButton::section { background: %(header_background)s; border: none; }
 QDockWidget { color: %(heading)s; }
 QDockWidget > QWidget { background: transparent; }
-QTabBar::tab { background: %(background_panel)s; color: %(muted)s; border: 2px solid %(gold_dark)s; border-bottom: none;
-    border-top-left-radius: 9px; border-top-right-radius: 9px; padding: 5px 16px; margin-right: 3px; }
-QTabBar::tab:selected { color: %(heading)s; border-color: %(gold)s; background: #13223a; }
-QTabBar::tab:hover { color: #ffffff; }
+QTabBar::tab { background: %(background_panel)s; color: %(muted)s; border: %(button_border_width)s solid %(gold_dark)s; border-bottom: none;
+    border-top-left-radius: %(button_radius)s; border-top-right-radius: %(button_radius)s; padding: 5px 16px; margin-right: 3px; }
+QTabBar::tab:selected { color: %(heading)s; border-color: %(gold)s; background: %(tab_selected_background)s; }
+QTabBar::tab:hover { color: %(button_hover_text)s; }
 QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; border: none; }
-QScrollBar:vertical { background: %(background_field)s; width: 12px; margin: 0; border: 1px solid #2a1d06; border-radius: 6px; }
-QScrollBar::handle:vertical { min-height: 26px; border-radius: 5px;
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 %(gold_dark)s, stop:0.5 %(gold)s, stop:1 %(gold_dark)s); }
-QScrollBar:horizontal { background: %(background_field)s; height: 12px; margin: 0; border: 1px solid #2a1d06; border-radius: 6px; }
-QScrollBar::handle:horizontal { min-width: 26px; border-radius: 5px;
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 %(gold_dark)s, stop:0.5 %(gold)s, stop:1 %(gold_dark)s); }
+QScrollBar:vertical { background: %(background_field)s; width: 12px; margin: 0; border: 1px solid %(scrollbar_border)s; border-radius: 6px; }
+QScrollBar::handle:vertical { min-height: 26px; border-radius: 5px; background: %(scrollbar_handle_vertical)s; }
+QScrollBar:horizontal { background: %(background_field)s; height: 12px; margin: 0; border: 1px solid %(scrollbar_border)s; border-radius: 6px; }
+QScrollBar::handle:horizontal { min-width: 26px; border-radius: 5px; background: %(scrollbar_handle_horizontal)s; }
 QScrollBar::add-line, QScrollBar::sub-line { width: 0; height: 0; }
 QScrollBar::add-page, QScrollBar::sub-page { background: none; }
-QStatusBar { background: #070b14; color: %(cyan_soft)s; border-top: 2px solid %(gold_middle)s; }
+QStatusBar { background: %(bar_background)s; color: %(cyan_soft)s; border-top: %(bar_rule_width)s solid %(gold_middle)s; }
 QSplitter::handle { background: transparent; }
 QProgressBar { border: 1px solid %(gold_middle)s; border-radius: 5px; background: %(background_field)s; color: %(text)s; text-align: center; }
 QProgressBar::chunk { background: %(cyan_dim)s; border-radius: 4px; }
 QGraphicsView { background: %(background_deep)s; border: none; }
-QRubberBand { border: 1px solid %(cyan)s; background: rgba(95, 212, 255, 40); }
+QRubberBand { border: 1px solid %(cyan)s; background: %(rubber_band)s; }
 QCheckBox, QRadioButton { color: %(text)s; }
 QMessageBox QLabel, QInputDialog QLabel { color: %(text)s; }
-""" % THEME
+"""
+
+
+def application_style_sheet():
+    return APPLICATION_STYLE_SHEET_TEMPLATE % THEME
 
 
 def apply_application_theme(application):
@@ -3460,16 +3599,18 @@ def apply_application_theme(application):
                         (QPalette.ColorRole.WindowText, THEME['text']),
                         (QPalette.ColorRole.Base, THEME['background_field']),
                         (QPalette.ColorRole.AlternateBase, THEME['background_alternate_row']),
-                        (QPalette.ColorRole.Text, THEME['text']), (QPalette.ColorRole.Button, '#13233b'),
-                        (QPalette.ColorRole.ButtonText, THEME['text']), (QPalette.ColorRole.Highlight, '#1d5f8a'),
-                        (QPalette.ColorRole.HighlightedText, '#ffffff'),
+                        (QPalette.ColorRole.Text, THEME['text']), (QPalette.ColorRole.Button, THEME['button']),
+                        (QPalette.ColorRole.ButtonText, THEME['text']),
+                        (QPalette.ColorRole.Highlight, THEME['text_selection']),
+                        (QPalette.ColorRole.HighlightedText, THEME['selection_text']),
                         (QPalette.ColorRole.ToolTipBase, THEME['background_panel']),
                         (QPalette.ColorRole.ToolTipText, THEME['text']),
-                        (QPalette.ColorRole.PlaceholderText, '#5f7488'),
-                        (QPalette.ColorRole.Link, THEME['cyan']), (QPalette.ColorRole.BrightText, '#ffffff')):
+                        (QPalette.ColorRole.PlaceholderText, THEME['placeholder']),
+                        (QPalette.ColorRole.Link, THEME['cyan']),
+                        (QPalette.ColorRole.BrightText, THEME['button_hover_text'])):
         palette.setColor(role, QColor(color))
     application.setPalette(palette)
-    application.setStyleSheet(APPLICATION_STYLE_SHEET)
+    application.setStyleSheet(application_style_sheet())
 
 
 def accent_buttons(button_box):
@@ -3598,6 +3739,11 @@ def draw_pylon_logo(painter, right, band_center_y, band_height):
     painter.save()
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     painter.translate(right - width, band_center_y - letter_height / 2)
+    if neutral_theme():
+        # neutral theme: flat dark-slate letters, no shadow or engraving
+        painter.fillPath(path, QBrush(QColor('#2b333c')))
+        painter.restore()
+        return width
     painter.save()
     painter.translate(1.2, 1.4)
     painter.fillPath(path, QBrush(QColor(0, 0, 0, 190)))                  # shadow
@@ -3757,8 +3903,8 @@ class BezelDialog(QDialog):
     def paintEvent(self, event):
         painter = QPainter(self)
         background = QLinearGradient(QPointF(0, 0), QPointF(0, self.height()))
-        background.setColorAt(0.0, QColor('#101a30'))
-        background.setColorAt(1.0, QColor('#03050a'))
+        background.setColorAt(0.0, QColor(THEME['dialog_top']))
+        background.setColorAt(1.0, QColor(THEME['dialog_bottom']))
         painter.fillRect(self.rect(), QBrush(background))
         draw_bezel(painter, QRectF(self.rect()).adjusted(5, 5, -5, -5), 16, 6, fill=False,
                    title=self.windowTitle())
@@ -3773,7 +3919,7 @@ def draw_pipe(painter, start, end, body_color=None, monochrome=False):
     a plain black line in a monochrome line drawing."""
     body_color = body_color or COLOR_LINE
     painter.save()
-    if monochrome:
+    if monochrome or neutral_theme():
         painter.setPen(QPen(QColor('#000000'), 2.0))
         painter.drawLine(start, end)
         painter.restore()
@@ -3813,6 +3959,7 @@ def draw_symbol(painter, block_type, state, color, size=None, orientation=0, mir
     if monochrome:
         translucent_fill = interior_fill          # line drawing: no tinted fills
     warning_color = stroke_color if monochrome else COLOR_WARNING
+    thin_fittings = monochrome or neutral_theme()     # tees, crosses, elbows: drawing-weight lines
 
     def flow_line(start_x, end_x):
         painter.drawLine(QPointF(start_x, 0), QPointF(end_x, 0))
@@ -3978,7 +4125,7 @@ def draw_symbol(painter, block_type, state, color, size=None, orientation=0, mir
         painter.drawPolygon(QPolygonF([QPointF(-8, -6), QPointF(26, -21), QPointF(26, 21), QPointF(-8, 6)]))
         if state == 0 and not monochrome:
             painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor(235, 104, 52, 150))
+            painter.setBrush(QColor(0, 0, 0, 45) if neutral_theme() else QColor(235, 104, 52, 150))
             painter.drawPolygon(QPolygonF([QPointF(27, -14), QPointF(52, 0), QPointF(27, 14)]))
     elif block_type == 'orifice':
         flow_line(-half_width, -4)
@@ -3990,19 +4137,19 @@ def draw_symbol(painter, block_type, state, color, size=None, orientation=0, mir
         else:
             painter.drawLine(QPointF(0, -20), QPointF(0, 20))
     elif block_type == 'tee':
-        painter.setPen(QPen(stroke_color, 2.5 if monochrome else 5.0))
+        painter.setPen(QPen(stroke_color, 2.5 if thin_fittings else 5.0))
         flow_line(-half_width, half_width)
         painter.drawLine(QPointF(0, 0), QPointF(0, base_height / 2))
         painter.setBrush(stroke_color)
-        painter.drawEllipse(QPointF(0, 0), 3.5 if monochrome else 4, 3.5 if monochrome else 4)
+        painter.drawEllipse(QPointF(0, 0), 3.5 if thin_fittings else 4, 3.5 if thin_fittings else 4)
     elif block_type == 'cross':
-        painter.setPen(QPen(stroke_color, 2.5 if monochrome else 5.0))
+        painter.setPen(QPen(stroke_color, 2.5 if thin_fittings else 5.0))
         flow_line(-half_width, half_width)
         painter.drawLine(QPointF(0, -base_height / 2), QPointF(0, base_height / 2))
         painter.setBrush(stroke_color)
-        painter.drawEllipse(QPointF(0, 0), 3.5 if monochrome else 4, 3.5 if monochrome else 4)
+        painter.drawEllipse(QPointF(0, 0), 3.5 if thin_fittings else 4, 3.5 if thin_fittings else 4)
     elif block_type == 'elbow':
-        painter.setPen(QPen(stroke_color, 2.5 if monochrome else 5.0))
+        painter.setPen(QPen(stroke_color, 2.5 if thin_fittings else 5.0))
         elbow_path = QPainterPath(QPointF(-half_width, 0))
         elbow_path.lineTo(-14, 0)
         elbow_path.quadTo(QPointF(0, 0), QPointF(0, 14))
@@ -4038,7 +4185,9 @@ def line_pixmap(template, width=76, height=50):
     path = QPainterPath(QPointF(width / 2 + (xs[0] - center_x) * scale, height / 2 + (ys[0] - center_y) * scale))
     for x, y in points[1:]:
         path.lineTo(QPointF(width / 2 + (x - center_x) * scale, height / 2 + (y - center_y) * scale))
-    for line_width, color in ((6.0, QColor(10, 14, 30, 235)), (3.4, COLOR_LINE_DEFINED), (1.0, QColor(200, 220, 255, 160))):
+    layers = (((3.0, COLOR_LINE_DEFINED),) if neutral_theme() else
+              ((6.0, QColor(10, 14, 30, 235)), (3.4, COLOR_LINE_DEFINED), (1.0, QColor(200, 220, 255, 160))))
+    for line_width, color in layers:
         pen = QPen(color, line_width)
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
@@ -4083,7 +4232,8 @@ class LabelItem(QGraphicsItem):
         self.plate = plate
         self.text = ''
         self.font = make_font(point_size, bold)
-        self.color = QColor(color)
+        # keep the shared theme colour object itself (not a copy) so a theme change reaches the label
+        self.color = color if isinstance(color, QColor) else QColor(color)
         self.rectangle = QRectF()
         self.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
         self.setZValue(10)
@@ -4113,10 +4263,10 @@ class LabelItem(QGraphicsItem):
             painter.drawText(self.rectangle, Qt.AlignmentFlag.AlignCenter, self.text)
             return
         if self.plate:
-            painter.setPen(QPen(QColor(217, 164, 65, 170), 1.0))
-            painter.setBrush(QColor(6, 11, 20, 230))
-            painter.drawRoundedRect(self.rectangle, 4, 4)
-        else:
+            painter.setPen(QPen(theme_color('label_plate_border'), 1.0))
+            painter.setBrush(theme_color('label_plate'))
+            painter.drawRoundedRect(self.rectangle, 4 if not neutral_theme() else 2, 4 if not neutral_theme() else 2)
+        elif not neutral_theme():                         # engraved shadow (console theme only)
             painter.setFont(self.font)
             painter.setPen(QColor(0, 0, 0, 220))
             painter.drawText(self.rectangle.translated(1, 1), Qt.AlignmentFlag.AlignCenter, self.text)
@@ -4141,11 +4291,22 @@ class PortItem(QGraphicsEllipseItem):
         self._apply_style(False)
 
     def _apply_style(self, hovered):
+        if neutral_theme():
+            # black ring, filled black when connected, blue on hover
+            self.setPen(QPen(QColor(THEME['cyan']) if hovered else QColor('#000000'), 1.4))
+            if hovered:
+                self.setBrush(QColor(THEME['cyan']))
+            else:
+                self.setBrush(QColor('#000000') if self.connected else QColor('#ffffff'))
+            return
         self.setPen(QPen(QColor(THEME['gold_highlight']), 1.6))
         if hovered:
             self.setBrush(QColor(THEME['cyan']))
         else:
             self.setBrush(QColor(THEME['gold']) if self.connected else QColor(THEME['background_deep']))
+
+    def refresh_theme(self):
+        self._apply_style(False)
 
     def set_connected(self, connected):
         self.connected = connected
@@ -4220,6 +4381,9 @@ class SpeedEditorItem(QGraphicsTextItem):
                 scene.notify()
         self.synchronize()
         self.block.update()
+
+    def refresh_theme(self):
+        self.setDefaultTextColor(COLOR_TEXT)
 
     def paint(self, painter, option, widget=None):
         painter.setPen(QPen(QColor(THEME['cyan']), 1.0))
@@ -4943,11 +5107,54 @@ class LineItem(DataLabelVisibility, QGraphicsPathItem):
                     QPointF(middle_x - direction_x * 4 + normal_x * 4, middle_y - direction_y * 4 + normal_y * 4),
                     QPointF(middle_x - direction_x * 4 - normal_x * 4, middle_y - direction_y * 4 - normal_y * 4)]))
 
+    def paint_neutral(self, painter):
+        """Neutral theme: a thin black tube (dark blue once its properties are set, blue when
+        selected), black junction dots, open circles at free ends and small black flow arrows."""
+        if self.isSelected():
+            color, width = QColor(COLOR_LINE_SELECTED), 3.0
+        elif self.properties_defined:
+            color, width = QColor(COLOR_LINE_DEFINED_HOVER if self._hovered else COLOR_LINE_DEFINED), 2.4
+        else:
+            color, width = QColor('#5f6b78' if self._hovered else '#000000'), 2.0
+        pen = QPen(color, width)
+        pen.setCapStyle(Qt.PenCapStyle.FlatCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.MiterJoin)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawPath(self.path())
+        if not self.points:
+            return
+        for attachment, end_point in ((self.start, self.points[0]), (self.end, self.points[-1])):
+            if attachment and attachment.get('kind') == 'line':
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(color)
+                painter.drawEllipse(to_qpoint(end_point), 3.5, 3.5)
+            elif not attachment:
+                painter.setPen(QPen(color, 1.5))
+                painter.setBrush(QColor('#ffffff'))
+                painter.drawEllipse(to_qpoint(end_point), 4, 4)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(color)
+        for (middle_x, middle_y), (direction_x, direction_y) in self.arrows:
+            normal_x, normal_y = -direction_y, direction_x
+            painter.drawPolygon(QPolygonF([
+                QPointF(middle_x + direction_x * 5, middle_y + direction_y * 5),
+                QPointF(middle_x - direction_x * 4 + normal_x * 4, middle_y - direction_y * 4 + normal_y * 4),
+                QPointF(middle_x - direction_x * 4 - normal_x * 4, middle_y - direction_y * 4 - normal_y * 4)]))
+        if self.isSelected():
+            painter.setPen(QPen(color, 1.2))
+            painter.setBrush(QColor('#ffffff'))
+            for point in self.points[1:-1]:
+                painter.drawRect(QRectF(point[0] - 3, point[1] - 3, 6, 6))
+
     def paint(self, painter, option, widget=None):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         line_drawing = getattr(self.scene(), 'line_drawing', None)
         if line_drawing is not None:
             self.paint_line_drawing(painter, line_drawing)
+            return
+        if neutral_theme():
+            self.paint_neutral(painter)
             return
         if self.isSelected():
             body_color = COLOR_LINE_SELECTED
@@ -5214,24 +5421,39 @@ class SchematicScene(QGraphicsScene):
                 self.assembly_outlines[assembly_identifier] = outline
             outline.set_geometry(outline_rectangle, record['name'], record['locked'])
 
+    def refresh_theme(self):
+        """Repaint everything after a colour-theme change (ports and the pump speed boxes keep
+        their own pens and text colour, so they are restyled explicitly)."""
+        for block in self.blocks.values():
+            for port in block.ports.values():
+                port.refresh_theme()
+            if block.speed_editor is not None:
+                block.speed_editor.refresh_theme()
+            block.update()
+        for line in self.lines.values():
+            line.update()
+        self.preview.hide()
+        self.invalidate(self.sceneRect(), QGraphicsScene.SceneLayer.BackgroundLayer)
+        self.update()
+
     def drawBackground(self, painter, rectangle):
         if self.line_drawing is not None:            # black-and-white export: plain white page
             painter.fillRect(rectangle, QColor('#ffffff'))
             return
         background = QLinearGradient(QPointF(0, rectangle.top()), QPointF(0, rectangle.bottom()))
-        background.setColorAt(0.0, QColor('#060a16'))
-        background.setColorAt(1.0, QColor(THEME['background_deep']))
+        background.setColorAt(0.0, QColor(THEME['canvas_top']))
+        background.setColorAt(1.0, QColor(THEME['canvas_bottom']))
         painter.fillRect(rectangle, QBrush(background))
         grid_step = 20
         if (rectangle.width() / grid_step) * (rectangle.height() / grid_step) > 60000:
             return
-        painter.setPen(QPen(QColor(70, 150, 190, 70), 1.6))
+        painter.setPen(QPen(theme_color('grid_dot'), 1.6))
         first_x = int(math.floor(rectangle.left() / grid_step)) * grid_step
         first_y = int(math.floor(rectangle.top() / grid_step)) * grid_step
         grid_points = [QPointF(x, y) for x in range(first_x, int(rectangle.right()) + 1, grid_step)
                        for y in range(first_y, int(rectangle.bottom()) + 1, grid_step)]
         painter.drawPoints(QPolygonF(grid_points))
-        painter.setPen(QPen(QColor(217, 164, 65, 60), 1.0))
+        painter.setPen(QPen(theme_color('grid_cross'), 1.0))
         crosshair_step = 100
         for x in range(int(math.floor(rectangle.left() / crosshair_step)) * crosshair_step,
                        int(rectangle.right()) + 1, crosshair_step):
@@ -6466,10 +6688,10 @@ class PaletteEntry(QFrame):
         self.saved_path = saved_path
         self._press_position = None
         self.setObjectName('entry')
-        self.setStyleSheet("#entry { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, "
-                           "stop:0 #14243c, stop:1 #070d18); border: 2px solid %(gold_middle)s; "
-                           "border-radius: 10px; }"
-                           "#entry:hover { border: 2px solid %(cyan)s; background: #10304c; }" % THEME)
+        self.setStyleSheet("#entry { background: %(entry_background)s; "
+                           "border: %(button_border_width)s solid %(gold_middle)s; border-radius: %(button_radius)s; }"
+                           "#entry:hover { border: %(button_border_width)s solid %(cyan)s; "
+                           "background: %(entry_hover_background)s; }" % THEME)
         entry_layout = QHBoxLayout(self)
         entry_layout.setContentsMargins(4, 3, 6, 3)
         is_assembly = template.get('format') == 'pylon_assembly'
@@ -6544,7 +6766,7 @@ class PaletteWidget(QWidget):
         self.scroll_area.setWidget(self.inner_widget)
         frame_layout.addWidget(self.scroll_area, 1)
         hint = QLabel("Click to add · drag onto canvas")
-        hint.setStyleSheet(f"color:{THEME['muted']};")
+        hint.setProperty('tone', 'muted')
         frame_layout.addWidget(hint)
         self.setMinimumWidth(240)
         self.refresh()
@@ -6567,7 +6789,7 @@ class PaletteWidget(QWidget):
             placeholder = QLabel("<i>None yet — right-click a block → Save Block, or select connected "
                                  "parts → right-click → Save selection as assembly</i>")
             placeholder.setWordWrap(True)
-            placeholder.setStyleSheet(f"color:{THEME['muted']};")
+            placeholder.setProperty('tone', 'muted')
             self.entries_layout.addWidget(placeholder)
         for path, template in saved_blocks:
             entry = PaletteEntry(template, saved_path=path)
@@ -6635,7 +6857,7 @@ class PropertyDialog(BezelDialog):
         if note:
             note_label = QLabel(note)
             note_label.setWordWrap(True)
-            note_label.setStyleSheet(f"color:{THEME['muted']};")
+            note_label.setProperty('tone', 'muted')
             outer_layout.addWidget(note_label)
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
@@ -6671,7 +6893,8 @@ class PropertyDialog(BezelDialog):
                 value = calculated_values.get(definition.key)
                 display = QLineEdit(format_number(float(value), 6) if isinstance(value, (int, float)) else '—')
                 display.setReadOnly(True)
-                display.setStyleSheet(f"background:#0d1626; color:{THEME['cyan_soft']}; border-color:#2a3a4c;")
+                display.setStyleSheet(f"background:{THEME['readonly_background']}; color:{THEME['cyan_soft']}; "
+                                      f"border-color:{THEME['readonly_border']};")
                 form.addRow(self._row_label(definition), display)
                 continue
             value = values.get(definition.key, definition.default)
@@ -6819,7 +7042,7 @@ class LineDialog(PropertyDialog):
         hint = QLabel("One row per kind of bend: angle (up to 180°), bend radius / tube diameter, and how many. "
                       "When the table has rows it replaces 'Number of bends (90°)' and 'Bend radius / diameter'.")
         hint.setWordWrap(True)
-        hint.setStyleSheet(f"color:{THEME['muted']};")
+        hint.setProperty('tone', 'muted')
         box_layout.addWidget(hint)
         self.bend_editor = QTableWidget(0, 3)
         self.bend_editor.setHorizontalHeaderLabels(["Angle [°]", "Bend radius / D", "Count"])
@@ -6879,7 +7102,6 @@ class LineDialog(PropertyDialog):
 
 
 # ordinal blue ramp for the dark surface: low speed darker, high speed brighter
-ORDINAL_BLUES = ['#256abf', '#2a78d6', '#5598e7', '#86b6ef', '#b7d3f6', '#cde2fb']
 
 
 class CurvePlot(QWidget):
@@ -6901,8 +7123,9 @@ class CurvePlot(QWidget):
     @staticmethod
     def _colors(count):
         if count <= 1:
-            return [ORDINAL_BLUES[2]]
-        return [ORDINAL_BLUES[round(index * (len(ORDINAL_BLUES) - 1) / (count - 1))] for index in range(count)]
+            return [THEME['plot_ramp'][2]]
+        ramp = THEME['plot_ramp']
+        return [ramp[round(index * (len(ramp) - 1) / (count - 1))] for index in range(count)]
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -6930,7 +7153,7 @@ class CurvePlot(QWidget):
         painter.setFont(make_font(7.5))
         for tick_index in range(6):
             pressure_tick, flow_tick = maximum_pressure * tick_index / 5, maximum_flow * tick_index / 5
-            painter.setPen(QPen(QColor('#1b2a3d'), 1))
+            painter.setPen(QPen(QColor(THEME['plot_grid']), 1))
             painter.drawLine(QPointF(to_x(pressure_tick), top_margin), QPointF(to_x(pressure_tick), top_margin + plot_height))
             painter.drawLine(QPointF(left_margin, to_y(flow_tick)), QPointF(left_margin + plot_width, to_y(flow_tick)))
             painter.setPen(COLOR_MUTED)
@@ -7020,7 +7243,7 @@ class PumpCurveDialog(BezelDialog):
                       "ΔP is linear between points (extrapolated beyond the ends), and a speed between two "
                       "stored curves is interpolated between them.")
         note.setWordWrap(True)
-        note.setStyleSheet(f"color:{THEME['muted']};")
+        note.setProperty('tone', 'muted')
         right_column.addWidget(note)
         button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         accent_buttons(button_box)
@@ -7169,7 +7392,7 @@ class SettingsDialog(BezelDialog):
         dialog_layout.addLayout(fluid_form)
         note = QLabel("Presets are approximate values near 20 °C — enter your own for other temperatures.")
         note.setWordWrap(True)
-        note.setStyleSheet(f"color:{THEME['muted']};")
+        note.setProperty('tone', 'muted')
         dialog_layout.addWidget(note)
         dialog_layout.addWidget(QLabel("<b>Loss coefficients and analysis settings</b>"))
         settings_form = QFormLayout()
@@ -7635,7 +7858,7 @@ class ScenarioPanel(QWidget):
         information = QLabel("A scenario stores every block's toggle state and properties, and every "
                              "line's properties. Double-click to apply.")
         information.setWordWrap(True)
-        information.setStyleSheet(f"color:{THEME['muted']};")
+        information.setProperty('tone', 'muted')
         frame_layout.addWidget(information)
         self.scenario_list = QListWidget()
         self.scenario_list.itemDoubleClicked.connect(lambda _: self.apply_selected())
@@ -7763,6 +7986,8 @@ right / Rotate left) turn the selected blocks 90°.
 <b>D</b> (toolbar: Show flow / pressure data) shows or hides every flow and pressure label; while
 they are hidden, hover over a block or line to see its data, and right-click an item →
 <i>Show flow / pressure data here</i> to show or hide that item's labels on their own.
+<b>View → Colour theme</b> switches between the dark <i>Console</i> look and a <i>Neutral</i> light
+look with the schematic in black on a white background; the choice is remembered.
 <b>Ctrl+C</b> copies the selected blocks together with the lines between them; <b>Ctrl+V</b>
 (or Ctrl+P) pastes a copy next to the original, or right-click the canvas → Paste here.
 Ctrl+D duplicates the selection in one step.
@@ -7825,7 +8050,7 @@ def save_user_settings(settings):
             return path
         except OSError:
             continue
-    LOGGER.warning("Could not save the recent-file list (no writable settings location)")
+    LOGGER.warning("Could not save the user settings (no writable settings location)")
     return None
 
 
@@ -8038,6 +8263,19 @@ class MainWindow(QMainWindow):
                                                "right-click an item to show or hide its own labels.")
         self.labels_action.setChecked(True)
         view_menu.addAction(self.labels_action)
+        theme_menu = view_menu.addMenu("Colour theme")
+        theme_group = QActionGroup(self)
+        theme_group.setExclusive(True)
+        self.theme_actions = {}
+        for theme_name, theme_label in COLOR_THEME_LABELS.items():
+            action = self._make_action(theme_label, lambda checked=False, theme_name=theme_name:
+                                       checked and self.set_color_theme(theme_name), None, True,
+                                       "Console: dark panels with gold frames. Neutral: light panels "
+                                       "and the schematic in black on a white background.")
+            action.setChecked(theme_name == THEME.get('style'))
+            theme_group.addAction(action)
+            theme_menu.addAction(action)
+            self.theme_actions[theme_name] = action
         view_menu.addSeparator()
         view_menu.addAction(results_dock.toggleViewAction())
         view_menu.addAction(scenario_dock.toggleViewAction())
@@ -8529,6 +8767,26 @@ class MainWindow(QMainWindow):
     def set_show_data_labels(self, visible):
         self.scene.set_show_labels(visible)
         self.scene.notify(physics_changed=False)
+
+    def set_color_theme(self, name):
+        """View → Colour theme: restyle the whole window live and remember the choice
+        (user setting, not part of the schematic or its undo history)."""
+        if name == THEME.get('style'):
+            return
+        name = set_color_theme(name)
+        application = QApplication.instance()
+        apply_application_theme(application)
+        self.block_palette.refresh()               # rebuilds the entries and their symbol icons
+        self.scene.refresh_theme()
+        for widget in application.allWidgets():
+            widget.update()
+        self.solve_now()                           # re-renders the result text in the new colours
+        self.scenario_panel.refresh()
+        settings = load_user_settings()
+        settings['color_theme'] = name
+        save_user_settings(settings)
+        LOGGER.info("Colour theme: %s", name)
+        self.statusBar().showMessage(f"Colour theme: {COLOR_THEME_LABELS[name]}", 4000)
 
     # ---- undo / redo ----------------------------------------------------------------
     HISTORY_LIMIT = 200
@@ -9039,6 +9297,7 @@ def main():
     ERROR_LOG.install(logging.DEBUG if '--debug' in sys.argv else logging.INFO)
     application = QApplication(sys.argv)
     application.setApplicationName(APPLICATION_NAME)
+    set_color_theme(load_user_settings().get('color_theme', DEFAULT_COLOR_THEME))
     apply_application_theme(application)
     arguments = [argument for argument in sys.argv[1:] if not argument.startswith('-')]
     window = MainWindow(arguments[0] if arguments else None)

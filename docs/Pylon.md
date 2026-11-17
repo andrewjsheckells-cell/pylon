@@ -6,12 +6,12 @@ A PySide6 desktop tool for drawing a spacecraft liquid-propulsion feed-system sc
 
 | | |
 |---|---|
-| Program | `pylon.py` (single file, version 1.26) |
+| Program | `pylon.py` (single file, version 1.27) |
 | Requires | Python ≥ 3.9, `PySide6`, `numpy` |
 | Run | `pip install PySide6 numpy` then `python pylon.py [schematic.pylon.json]` |
 | Solver self-test (no GUI) | `python pylon.py --selftest` |
 | Saved blocks | `Component Blocks/` folder next to the script (created on first save) |
-| Start-up | Reopens the most recent schematic (`pylon_settings.json` keeps the recent list); the built-in example if there is none |
+| Start-up | Reopens the most recent schematic (`pylon_settings.json` keeps the recent list and the colour theme); the built-in example if there is none |
 | Error log | `Logs/pylon.log` next to the script (or `~/.pylon/Logs/` if that folder can't be written); `python pylon.py --debug` also logs every solve |
 | Example data | `examples/example_pump_curves.csv` (synthetic gear-pump curves for the import test) |
 | Repository | <https://github.com/andrewjsheckells-cell/pylon> · project page <https://andrewjsheckells-cell.github.io/pylon/> |
@@ -30,6 +30,19 @@ A PySide6 desktop tool for drawing a spacecraft liquid-propulsion feed-system sc
 ## 2. User interface
 
 ### 2.0 Look and feel
+Pylon has two colour themes, chosen under **View → Colour theme**. The switch is immediate (no restart), applies to the whole window, and is remembered in `pylon_settings.json` for the next start. It is a user setting: it is not saved in the schematic and is not an undo step.
+
+* **Console (dark)** — the default, described in the rest of this section.
+* **Neutral (light)** — a plain engineering look with no sci-fi styling:
+  * light grey window, white panels with a thin grey border and small corner radius, plain bold panel titles over a hairline rule, flat white buttons with grey borders; accept/cancel buttons keep green/red text;
+  * **the schematic is black on a white background**: black symbols with white interiors, a faint grey dot grid and cross-hairs, every tube a thin black line with black junction dots, open circles at free ends and small black flow arrows;
+  * ports are black rings (filled black when connected);
+  * name labels are plain dark text and flow/pressure labels sit on white plates with a thin grey border;
+  * OFF / blocked components are grey; the tank fill level is a light grey tint and a firing thruster's plume a pale grey;
+  * selection is blue (a pale blue halo on blocks, a blue line), warnings are red (red halo and "!" badge), and lines whose properties are set are dark blue instead of black;
+  * the logo is drawn in flat dark slate.
+  *Export PNG* in this theme gives the black-on-white picture as it appears on screen; *Export line drawing* is unchanged in both themes.
+
 The interface uses a dark sci-fi console style taken from the user's reference screenshot of a game briefing screen.
 * **Frames:** every panel sits in a bevelled **gold metallic frame** with rounded corners, angular corner fins and a thin **red inner trim** around a dark navy panel. The panels are the component column, the schematic, System status, Component data, Warnings and Scenarios, plus every dialog.
 * **Headings** are engraved gold capitals with a fading gold rule.
@@ -46,8 +59,9 @@ The interface uses a dark sci-fi console style taken from the user's reference s
   * one `draw_bezel()` painter routine is shared by panels and dialogs (components are drawn without it);
   * an application style sheet covers the standard widgets;
   * the Qt Fusion style keeps the look the same on every OS;
-  * all colours live in the `THEME` dictionary at the top of the GUI section, so the look can be retuned in one place.
+  * all colours live in the theme dictionaries at the top of the GUI section (`CONSOLE_THEME`, `NEUTRAL_THEME`), so each look can be retuned in one place.
 * **Not copied:** no logos, artwork, fonts or other game assets are included.
+* **Theme dictionaries:** `CONSOLE_THEME` and `NEUTRAL_THEME` have the same keys; `set_color_theme()` copies one into `THEME` and updates the shared `COLOR_*` colours in place.
 
 ### 2.1 Layout
 * **Left: Component Blocks column.** Enclosed in a gold bezel frame and scrollable when it is taller than the window. *Starting blocks* (the fourteen built-in types) come first, then *Saved blocks, assemblies & lines* (every `.json` in `Component Blocks/`; a saved assembly shows its parts' symbols and "Assembly · N parts", a saved line its blue shape and "Line · ID · length · bends"). Click an entry to add it near the centre of the view at a free spot, or drag it to a location. Right-click a saved entry to delete it from the library.
@@ -501,7 +515,33 @@ Build a single-file Python program named Pylon (pylon.py), with a PySide6 GUI (n
 other dependency) for drawing a spacecraft liquid-propulsion feed-system schematic and solving it as a
 steady, adiabatic, incompressible flow network.
 
-LOOK AND FEEL (dark sci-fi console style; no game assets, logos or fonts copied)
+COLOUR THEMES
+- Two themes with identical keys: CONSOLE_THEME (default, below) and NEUTRAL_THEME. THEME is the
+  live dict; set_color_theme(name) copies the chosen theme into it and updates the shared QColor
+  objects (COLOR_LINE, COLOR_TEXT, COLOR_SYMBOL, …) in place with setRgba, so items holding them
+  follow. LabelItem keeps the QColor it was given (no copy). Key names come from the console theme
+  ('gold' = frame/border colour, 'cyan' = accent/selection), plus canvas keys (symbol, line_defined,
+  canvas_top/bottom, grid_dot, grid_cross, label_plate, label_plate_border, plot_grid, plot_ramp)
+  and widget keys used by APPLICATION_STYLE_SHEET_TEMPLATE (main_window_background, bar_background,
+  bar_rule_width, button_background, button_radius, readonly_background, …); theme_color() also
+  reads 'rgba(r, g, b, a)' values. Muted hint labels use the dynamic property tone="muted".
+- View → Colour theme ▸ Console (dark) / Neutral (light, black-on-white schematic): exclusive,
+  applied live by MainWindow.set_color_theme (re-apply palette and style sheet, rebuild the
+  component column, scene.refresh_theme() restyles ports and pump speed boxes, repaint all widgets,
+  re-solve to re-render results, refresh scenarios) and saved as color_theme in pylon_settings.json;
+  main() applies the saved theme before building the window. Not part of the schematic or undo.
+- Neutral theme (neutral_theme() true): light grey window (#e9ecef), white/near-white panels,
+  text #1b1f24, accent blue #1f6fd1, warning #c62828, go #1e7d32, off #9aa1a9. draw_bezel delegates
+  to draw_flat_panel (1 px grey border, radius 4, bold title over a hairline rule). Canvas: white,
+  grid dots and cross-hairs in translucent black; symbols black (COLOR_SYMBOL) with white interiors,
+  OFF grey, tees/crosses/elbows at the line-drawing weight (2.5 px), tube stubs as single black
+  lines, pale grey tank fill and thruster plume; lines via LineItem.paint_neutral (2 px black,
+  2.4 px dark blue #1d4fb8 when properties are set, 3 px blue when selected, black junction dots,
+  white free-end circles, small filled arrows); ports black rings filled black when connected, blue
+  on hover; label plates white with a grey border, name labels without shadow; logo flat #2b333c;
+  pump-curve plot uses a dark-to-mid blue ramp on white.
+
+LOOK AND FEEL — CONSOLE THEME (dark sci-fi console style; no game assets, logos or fonts copied)
 - All colours in one theme dict THEME: deep navy/indigo backgrounds, gold metallic frames (#ffe9a8 →
   #d9a441 → #5a3a0c), red inner trim (#b8361f), cyan accents (#5fd4ff), pale cyan-white text,
   gold headings (#f2c14e), green for go/OK (#7dff8a), red for warnings/cancel (#ff6b5a).
@@ -564,7 +604,7 @@ LAYOUT
   Edit (Undo Ctrl+Z, Redo Ctrl+Y / Ctrl+Shift+Z, Select/Move S, Draw Line L, Delete, Copy Ctrl+C,
   Paste Ctrl+V and Ctrl+P, Duplicate selection Ctrl+D, Rotate left Shift+R, Rotate right R, ⇋ Flip horizontal H, ⇵ Flip
   vertical V, Icon size ▸ Small/Medium/Large, Select all);
-  View (fit, zoom, Show flow / pressure data D, docks);
+  View (fit, zoom, Show flow / pressure data D, Colour theme ▸ Console / Neutral, docks);
   Toolbar (short captions via setIconText, full text in tooltips and menus): Undo, Redo | Select, Draw
   Line, ⟲ Rotate, Rotate ⟳, ⇋ Flip, ⇵ Flip | Show data
   data (checkable) | Solve, Auto-solve, Fit | Fluid…, Size Orifice…, Lowest RPM…;
@@ -926,3 +966,4 @@ CODE CONVENTIONS
 | 1.24 | 2026-10-14 | Fix: the 1.23 logo crashed at start-up with a RecursionError (its size hint asked the toolbar for its size hint, which asks the logo back). The logo now reads only the toolbar's current height and follows height changes through an event filter. |
 | 1.25 | 2026-10-14 | The logo is now a drawn **PYLON** logotype (wide geometric capitals with chamfered corners, brushed-gold fill, engraved outline, shadow) instead of text in the panel-title font, and the ≡≡≡ bars are gone. It needs no font file and looks the same on every computer. |
 | 1.26 | 2026-10-14 | The logo is centred horizontally over the right-hand panel (System status / Component data) and follows it when the window or the panel is resized; it moves right only as far as needed to clear the toolbar buttons. |
+| 1.27 | 2026-11-17 | **View → Colour theme:** a *Neutral (light)* theme alongside the dark *Console* one — light grey panels with thin flat frames, and the schematic in black on a white background (blue selection, red warnings, dark-blue lines with set properties). Switches live and is remembered between sessions. No change to the physics or file format. |
