@@ -6,7 +6,7 @@ A PySide6 desktop tool for drawing a spacecraft liquid-propulsion feed-system sc
 
 | | |
 |---|---|
-| Program | `pylon.py` (single file, version 1.28) |
+| Program | `pylon.py` (single file, version 1.29) |
 | Requires | Python ≥ 3.9, `PySide6`, `numpy` |
 | Run | `pip install PySide6 numpy` then `python pylon.py [schematic.pylon.json]` |
 | Solver self-test (no GUI) | `python pylon.py --selftest` |
@@ -191,7 +191,8 @@ Blocks added after a scenario was saved keep their current values when it is app
   * the last 1000 log entries;
   * optionally, the schematic as JSON (save that part as `.pylon.json` to reopen it).
 * **Help → Open log folder** opens the log folder in the file browser.
-* **`python pylon.py --debug`** also logs every solve.
+* **Timing.** Any update that takes more than 0.3 s is logged as *Slow update*, with the time split into the solver (iterations, and whether the warm start failed), the canvas labels and the results table, plus the number of blocks, lines and tube-to-tube tees. Line routing and automatic tube joining slower than 0.3 s are logged as *Slow edit*. Send the log (or *Help → Generate error report…*) if Pylon feels slow.
+* **`python pylon.py --debug`** also logs every solve, with its timing.
 
 ## 3. Components
 
@@ -312,7 +313,7 @@ For a tube of inner diameter D, length L, area A, mass flow ṁ, velocity V = �
   * Equations: mass conservation at every free node, plus one element law per element. The element law is p₁ − p₂ = Δp(ṁ), ṁ = 0, ṁ = ṁ_set, or ṁ = curve(p₂ − p₁).
 * **Robustness:**
   * Quadratic terms use ṁ·√(ṁ² + ε²) with ε = 10⁻⁷ kg/s, so the Jacobian is never singular at zero flow.
-  * A linearised pre-solve gives the starting point.
+  * A linearised pre-solve gives the starting point (solved directly, with least squares only if the system is singular). It is skipped when the previous solution covers every unknown, which is the usual case while editing.
   * Damped Newton–Raphson with backtracking [DENNIS], solving node pressures and element flows together [TODINI], converges to a scaled residual below 10⁻¹⁰, typically in 3–8 iterations.
   * The previous solution is used as a warm start.
 * **Ill-posed parts of the network:**
@@ -874,8 +875,9 @@ PHYSICS
     lists them as "Tee <run> ← <branch>" (centre pressure, largest arm loss, through flow, arm flows).
   - Unknowns are free-node pressures and element flows; equations are node mass balances plus element
     laws.
-  - Quadratic terms are regularised as ṁ√(ṁ²+ε²); start from a linearised pre-solve; damped Newton
-    with backtracking; warm start from the previous solution.
+  - Quadratic terms are regularised as ṁ√(ṁ²+ε²); start from a linearised pre-solve (numpy.linalg.solve,
+    lstsq only on LinAlgError), skipped when the warm start supplies every node pressure and element
+    flow; damped Newton with backtracking; warm start from the previous solution.
   - Regions with no pressure boundary get no pressure and zero flow.
   - Network issues for a block (pump without curves, speed outside its curves) are listed in the
     warnings and also badge the block.
@@ -948,6 +950,11 @@ ERROR LOG
   keyed by warning_key(text) (the text with its numbers replaced, so changing values are the same
   warning): new keys at WARNING "Warning: …", changed values at DEBUG, removed keys at INFO
   "Warning cleared: <latest text>". Reset on open.
+- Timing: MainWindow.solve_now times the solve, scene.apply_results and show_results; over
+  SLOW_UPDATE_SECONDS (0.3 s) it logs WARNING "Slow update: T s (solver … s, N iterations[, warm start
+  failed]; canvas labels … s; results table … s) for B blocks, L lines, J tube-to-tube tees", else DEBUG
+  "Update: …". log_slow_edit(what, started) does the same for reroute_line and auto_join_lines
+  ("Slow edit: … took T s").
 - record_error(summary, details) logs at ERROR and keeps the error for reports: open/save/export/
   library-write failures and solver exceptions (with traceback). Pump-curve import failures WARNING.
 - Unhandled exceptions: log CRITICAL with traceback, keep for reports, show ErrorDialog (summary,
@@ -1003,5 +1010,6 @@ CODE CONVENTIONS
 | 1.24 | 2026-10-14 | Fix: the 1.23 logo crashed at start-up with a RecursionError (its size hint asked the toolbar for its size hint, which asks the logo back). The logo now reads only the toolbar's current height and follows height changes through an event filter. |
 | 1.25 | 2026-10-14 | The logo is now a drawn **PYLON** logotype (wide geometric capitals with chamfered corners, brushed-gold fill, engraved outline, shadow) instead of text in the panel-title font, and the ≡≡≡ bars are gone. It needs no font file and looks the same on every computer. |
 | 1.26 | 2026-10-14 | The logo is centred horizontally over the right-hand panel (System status / Component data) and follows it when the window or the panel is resized; it moves right only as far as needed to clear the toolbar buttons. |
+| 1.29 | 2026-11-17 | Faster solving: the linearised start-up step uses a direct solve instead of least squares, and is skipped when the previous solution is a complete warm start (the usual case while editing): about 5× faster per update on a 70-line schematic, identical results. Slow updates and slow line routing / tube joining (over 0.3 s) are now logged with a timing breakdown. |
 | 1.28 | 2026-11-17 | **Tube-to-tube tees:** a line tapped into another line, or three or more line ends meeting without a port, is now solved as a tee (cross for four or more) with the Tee block's losses, and listed in the Results table; before, these joints were loss-free. **Automatic joining:** two tubes connected end to end with nothing else there are joined into one line; when both have properties set you choose *Add together*, either tube's values, or *Keep as two tubes*. Self-test checks added. The example's results are unchanged at the precision shown. |
 | 1.27 | 2026-11-17 | **View → Colour theme:** a *Neutral (light)* theme alongside the dark *Console* one — light grey panels with thin flat frames, and the schematic in black on a white background (blue selection, red warnings, dark-blue lines with set properties). Switches live and is remembered between sessions. No change to the physics or file format. |

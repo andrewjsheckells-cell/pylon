@@ -87,12 +87,13 @@ import re
 import sys
 import threading
 import traceback
+import time
 import uuid
 
 import numpy
 
 APPLICATION_NAME = "Pylon"
-APPLICATION_VERSION = "1.28"
+APPLICATION_VERSION = "1.29"
 FILE_FORMAT_VERSION = 3
 
 # Program log (errors and warnings).  Silent until the GUI attaches its handlers (see ErrorLog).
@@ -1864,13 +1865,20 @@ def solve_network(network, initial_guess=None, tolerance=1e-10, maximum_iteratio
     reference_mass_flow = 1e-3
     linear_resistances = [max(element.pressure_drop_function(reference_mass_flow) / reference_mass_flow, 1.0)
                           if element.kind == 'resistance' else 0.0 for element in active_elements]
-    try:
-        residuals, jacobian = residuals_and_jacobian(unknowns, linearised=True,
-                                                     linear_resistances=linear_resistances)
-        # one Newton step on the linearised system: x <- x - J^-1 F(x)                     [DENNIS]
-        unknowns = unknowns - numpy.linalg.lstsq(jacobian, residuals, rcond=None)[0]
-    except numpy.linalg.LinAlgError:
-        pass
+    warm_start_complete = bool(initial_guess) and all(
+        initial_guess.get('pressures', {}).get(node) is not None for node in node_index) and all(
+        initial_guess.get('mass_flows', {}).get(element.key) is not None for element in active_elements)
+    if not warm_start_complete:          # a full warm start needs no linearised pre-solve
+        try:
+            residuals, jacobian = residuals_and_jacobian(unknowns, linearised=True,
+                                                         linear_resistances=linear_resistances)
+            # one Newton step on the linearised system: x <- x - J^-1 F(x)                 [DENNIS]
+            try:
+                unknowns = unknowns - numpy.linalg.solve(jacobian, residuals)
+            except numpy.linalg.LinAlgError:     # singular (e.g. dead ends): least squares
+                unknowns = unknowns - numpy.linalg.lstsq(jacobian, residuals, rcond=None)[0]
+        except numpy.linalg.LinAlgError:
+            pass
     if initial_guess:
         for node, index in node_index.items():
             value = initial_guess.get('pressures', {}).get(node)
@@ -5516,6 +5524,16 @@ class LineItem(DataLabelVisibility, QGraphicsPathItem):
 # -----------------------------------------------------------------------------
 # Scene
 # -----------------------------------------------------------------------------
+
+def log_slow_edit(what, started, limit_seconds=0.3):
+    """Log an editing step that took longer than limit_seconds (warning), else at DEBUG."""
+    elapsed = time.perf_counter() - started
+    if elapsed > limit_seconds:
+        LOGGER.warning("Slow edit: %s took %.2f s", what, elapsed)
+    elif elapsed > 0.02:
+        LOGGER.debug("Edit: %s took %.3f s", what, elapsed)
+
+
 class SchematicScene(QGraphicsScene):
     model_changed = Signal(bool)    # True when the physics may have changed
     message = Signal(str)
@@ -5758,12 +5776,14 @@ class SchematicScene(QGraphicsScene):
         return None, None
 
     def reroute_line(self, line):
+        started = time.perf_counter()
         start, start_direction = self.attachment_point(line.start)
         end, end_direction = self.attachment_point(line.end)
         start = start or line.points[0]
         end = end or line.points[-1]
         line.set_points(self.route(start, start_direction, end, end_direction))
         self.update_dependents(line)
+        log_slow_edit(f"routing {line.name}", started)
 
     def update_dependents(self, line, visited=None):
         """Move the ends of lines tapped onto `line` so they follow it."""
@@ -6516,6 +6536,13 @@ class SchematicScene(QGraphicsScene):
             QTimer.singleShot(0, lambda: self.auto_join_lines(identifiers))
 
     def auto_join_lines(self, line_identifiers):
+        started = time.perf_counter()
+        try:
+            self._auto_join_lines(line_identifiers)
+        finally:
+            log_slow_edit("joining tubes", started)
+
+    def _auto_join_lines(self, line_identifiers):
         pending, joined = list(dict.fromkeys(line_identifiers)), False
         while pending:
             line = self.lines.get(pending.pop(0))
@@ -8794,20 +8821,38 @@ class MainWindow(QMainWindow):
             self.solve_timer.start()
         self.scenario_panel.refresh()
 
+    SLOW_UPDATE_SECONDS = 0.3           # updates slower than this are logged as warnings
+
     def solve_now(self):
+        started = time.perf_counter()
         model = self.scene.to_model()
+        warm_start_failed = False
         try:
             results = solve_model(model, initial_guess=self._initial_guess)
             if not results['converged'] and self._initial_guess is not None:
+                warm_start_failed = True
                 results = solve_model(model)
         except Exception as error:  # keep the editor alive whatever the network looks like
             ERROR_LOG.record_error(f"Solver error: {type(error).__name__}: {error}", traceback.format_exc())
             self.statusBar().showMessage(f"Solver error: {error} (logged; Help → Generate error report…)", 10000)
             return
+        solved = time.perf_counter()
         self._initial_guess = results['initial_guess'] if results['converged'] else None
         self._log_solution(model, results)
         self.scene.apply_results(results)
+        drawn = time.perf_counter()
         self.results_panel.show_results(results)
+        finished = time.perf_counter()
+        # timing: always at DEBUG (--debug); as a warning when the whole update is slow
+        timing = (f"{finished - started:.2f} s (solver {solved - started:.2f} s, {results['iterations']} "
+                  f"iterations{', warm start failed' if warm_start_failed else ''}; canvas labels "
+                  f"{drawn - solved:.2f} s; results table {finished - drawn:.2f} s) for "
+                  f"{len(model['blocks'])} blocks, {len(model['lines'])} lines, "
+                  f"{len(results.get('junctions', []))} tube-to-tube tees")
+        if finished - started > self.SLOW_UPDATE_SECONDS:
+            LOGGER.warning("Slow update: %s", timing)
+        else:
+            LOGGER.debug("Update: %s", timing)
         warning_count = len(results['warnings'])
         self.statusBar().showMessage(f"{results['message']}"
                                      + (f" · {warning_count} warning(s)" if warning_count else ''), 6000)
