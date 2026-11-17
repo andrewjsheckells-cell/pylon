@@ -6,7 +6,7 @@ A PySide6 desktop tool for drawing a spacecraft liquid-propulsion feed-system sc
 
 | | |
 |---|---|
-| Program | `pylon.py` (single file, version 1.29) |
+| Program | `pylon.py` (single file, version 1.30) |
 | Requires | Python ≥ 3.9, `PySide6`, `numpy` |
 | Run | `pip install PySide6 numpy` then `python pylon.py [schematic.pylon.json]` |
 | Solver self-test (no GUI) | `python pylon.py --selftest` |
@@ -315,6 +315,7 @@ For a tube of inner diameter D, length L, area A, mass flow ṁ, velocity V = �
   * Quadratic terms use ṁ·√(ṁ² + ε²) with ε = 10⁻⁷ kg/s, so the Jacobian is never singular at zero flow.
   * A linearised pre-solve gives the starting point (solved directly, with least squares only if the system is singular). It is skipped when the previous solution covers every unknown, which is the usual case while editing.
   * Damped Newton–Raphson with backtracking [DENNIS], solving node pressures and element flows together [TODINI], converges to a scaled residual below 10⁻¹⁰, typically in 3–8 iterations.
+  * **Series chains are solved as one element.** A node joined to exactly two flow resistances (tube → valve → tube …) only passes the flow on, so each run of resistances in series is one unknown flow with a pressure drop equal to the sum of its members'. The inner pressures and member flows are then recovered exactly. This is the same set of equations with far fewer unknowns: the dense Newton step costs about n³, and a 54-block, 60-line feed system drops from 540 unknowns to 147. Junctions, pumps, closed elements and boundaries break chains; a closed ring of tubes is left as is. The self-test checks that every pressure and flow matches the uncollapsed solve.
   * The previous solution is used as a warm start.
 * **Ill-posed parts of the network:**
   * Regions with no path to any pressure boundary get no pressure and zero flow.
@@ -875,6 +876,12 @@ PHYSICS
     lists them as "Tee <run> ← <branch>" (centre pressure, largest arm loss, through flow, arm flows).
   - Unknowns are free-node pressures and element flows; equations are node mass balances plus element
     laws.
+  - Series chains (collapse_series_chains → SeriesChain): free nodes with exactly two incident elements,
+    both resistances, are inner nodes; runs through them become one 'resistance' element (first/second
+    node = chain ends; dP(m) = Σ s·dP_member(s·m), s = ±1 member orientation along the chain); rings are
+    left alone. Warm-start flow of a chain = s × its first member's flow. After the solve,
+    SeriesChain.expand() sets member flows s·m and inner pressures by walking the drops.
+    solve_network(..., collapse_series=True); results carry 'unknowns'.
   - Quadratic terms are regularised as ṁ√(ṁ²+ε²); start from a linearised pre-solve (numpy.linalg.solve,
     lstsq only on LinAlgError), skipped when the warm start supplies every node pressure and element
     flow; damped Newton with backtracking; warm start from the previous solution.
@@ -1010,6 +1017,7 @@ CODE CONVENTIONS
 | 1.24 | 2026-10-14 | Fix: the 1.23 logo crashed at start-up with a RecursionError (its size hint asked the toolbar for its size hint, which asks the logo back). The logo now reads only the toolbar's current height and follows height changes through an event filter. |
 | 1.25 | 2026-10-14 | The logo is now a drawn **PYLON** logotype (wide geometric capitals with chamfered corners, brushed-gold fill, engraved outline, shadow) instead of text in the panel-title font, and the ≡≡≡ bars are gone. It needs no font file and looks the same on every computer. |
 | 1.26 | 2026-10-14 | The logo is centred horizontally over the right-hand panel (System status / Component data) and follows it when the window or the panel is resized; it moves right only as far as needed to clear the toolbar buttons. |
+| 1.30 | 2026-11-17 | From a user error report (54 blocks, 60 lines, 32 tube tees; 1–3.5 s per update on Windows): resistances in series are now solved as one element, with inner pressures and flows recovered exactly. That report's network drops from 540 to 147 unknowns, so the dense Newton step is about 50× cheaper; results are unchanged (self-test compares against the full solve). The *Slow update* log line now includes the number of unknowns. |
 | 1.29 | 2026-11-17 | Faster solving: the linearised start-up step uses a direct solve instead of least squares, and is skipped when the previous solution is a complete warm start (the usual case while editing): about 5× faster per update on a 70-line schematic, identical results. Slow updates and slow line routing / tube joining (over 0.3 s) are now logged with a timing breakdown. |
 | 1.28 | 2026-11-17 | **Tube-to-tube tees:** a line tapped into another line, or three or more line ends meeting without a port, is now solved as a tee (cross for four or more) with the Tee block's losses, and listed in the Results table; before, these joints were loss-free. **Automatic joining:** two tubes connected end to end with nothing else there are joined into one line; when both have properties set you choose *Add together*, either tube's values, or *Keep as two tubes*. Self-test checks added. The example's results are unchanged at the precision shown. |
 | 1.27 | 2026-11-17 | **View → Colour theme:** a *Neutral (light)* theme alongside the dark *Console* one — light grey panels with thin flat frames, and the schematic in black on a white background (blue selection, red warnings, dark-blue lines with set properties). Switches live and is remembered between sessions. No change to the physics or file format. |

@@ -93,7 +93,7 @@ import uuid
 import numpy
 
 APPLICATION_NAME = "Pylon"
-APPLICATION_VERSION = "1.29"
+APPLICATION_VERSION = "1.30"
 FILE_FORMAT_VERSION = 3
 
 # Program log (errors and warnings).  Silent until the GUI attaches its handlers (see ErrorLog).
@@ -1738,7 +1738,100 @@ def _central_difference_derivative(function, value):
     return (function(value + step) - function(value - step)) / (2 * step)
 
 
-def solve_network(network, initial_guess=None, tolerance=1e-10, maximum_iterations=150):
+class SeriesChain:
+    """Resistance elements in series, solved as one element.
+
+    A free node joined to exactly two resistance elements (a tube into a valve, a valve into a
+    tube, …) only passes the same flow on; the chain through such nodes has one flow and its
+    pressure drop is the sum of its members' drops.  Solving the chain as one element gives the
+    same solution with far fewer unknowns (the dense Newton step costs ~n³); the inner node
+    pressures and member flows are recovered exactly afterwards (expand)."""
+    kind = 'resistance'
+
+    def __init__(self, index, start_node, end_node, members, inner_nodes):
+        self.key = f"series-chain:{index}"
+        self.owner = ('series', index)
+        self.first_node, self.second_node = start_node, end_node
+        self.members = members                 # [(element, +1 along the chain / -1 reversed)]
+        self.inner_nodes = inner_nodes         # nodes between consecutive members, in order
+
+    def pressure_drop_function(self, mass_flow):
+        # drop along the chain = sum of member drops; a reversed member carries -mdot,
+        # so its drop along the chain is -dP(-mdot)
+        return sum(sign * element.pressure_drop_function(sign * mass_flow) for element, sign in self.members)
+
+    def expand(self, mass_flow, start_pressure, pressures, mass_flows):
+        pressure = start_pressure
+        for member_index, (element, sign) in enumerate(self.members):
+            mass_flows[element.key] = sign * mass_flow
+            pressure = pressure - sign * element.pressure_drop_function(sign * mass_flow)
+            if member_index < len(self.inner_nodes):
+                pressures[self.inner_nodes[member_index]] = pressure
+
+
+def collapse_series_chains(elements, free_nodes):
+    """Replace runs of resistance elements joined through free nodes of degree two by SeriesChain
+    elements.  Returns (elements to solve, chains, the inner nodes that drop out)."""
+    incident = {}
+    for element in elements:
+        incident.setdefault(element.first_node, []).append(element)
+        incident.setdefault(element.second_node, []).append(element)
+    inner = {node for node in free_nodes
+             if len(incident.get(node, ())) == 2 and incident[node][0] is not incident[node][1]
+             and all(element.kind == 'resistance' for element in incident[node])}
+    if not inner:
+        return list(elements), [], set()
+
+    def other_element(node, element):
+        first, second = incident[node]
+        return second if first is element else first
+    used, chains, solve_elements, removed_nodes = set(), [], [], set()
+    for element in elements:
+        if id(element) in used:
+            continue
+        if element.kind != 'resistance' or (element.first_node not in inner and element.second_node not in inner):
+            solve_elements.append(element)
+            used.add(id(element))
+            continue
+        members, member_ids, ring = [(element, 1)], {id(element)}, False
+        forward_nodes, node, current = [], element.second_node, element
+        while node in inner:                                    # walk downstream
+            following = other_element(node, current)
+            if id(following) in member_ids:
+                ring = True
+                break
+            sign = 1 if following.first_node == node else -1
+            members.append((following, sign))
+            member_ids.add(id(following))
+            forward_nodes.append(node)
+            node, current = (following.second_node if sign == 1 else following.first_node), following
+        end_node = node
+        backward_members, backward_nodes, node, current = [], [], element.first_node, element
+        while not ring and node in inner:                       # walk upstream
+            preceding = other_element(node, current)
+            if id(preceding) in member_ids:
+                ring = True
+                break
+            sign = 1 if preceding.second_node == node else -1
+            backward_members.append((preceding, sign))
+            member_ids.add(id(preceding))
+            backward_nodes.append(node)
+            node, current = (preceding.first_node if sign == 1 else preceding.second_node), preceding
+        start_node = node
+        used |= member_ids
+        all_members = list(reversed(backward_members)) + members
+        if ring or len(all_members) < 2:                        # a closed ring of tubes: leave as is
+            solve_elements.extend(member for member, _ in all_members)
+            continue
+        chain = SeriesChain(len(chains), start_node, end_node, all_members,
+                            list(reversed(backward_nodes)) + forward_nodes)
+        chains.append(chain)
+        solve_elements.append(chain)
+        removed_nodes.update(chain.inner_nodes)
+    return solve_elements, chains, removed_nodes
+
+
+def solve_network(network, initial_guess=None, tolerance=1e-10, maximum_iterations=150, collapse_series=True):
     """Solve node pressures and element mass flows simultaneously   [TODINI].
 
     Unknowns: pressure of every free node and mass flow of every active element.
@@ -1785,9 +1878,13 @@ def solve_network(network, initial_guess=None, tolerance=1e-10, maximum_iteratio
 
     free_nodes = sorted(node for node in nodes
                         if node not in network.fixed_pressures and node not in floating_nodes)
-    node_index = {node: index for index, node in enumerate(free_nodes)}
     active_elements = [element for element in elements if element.kind != 'closed'
                        and element.first_node not in floating_nodes and element.second_node not in floating_nodes]
+    # resistances in series through plain two-element nodes are solved as one element each
+    active_elements, series_chains, inner_nodes = (collapse_series_chains(active_elements, set(free_nodes))
+                                                   if collapse_series else (active_elements, [], set()))
+    free_nodes = [node for node in free_nodes if node not in inner_nodes]
+    node_index = {node: index for index, node in enumerate(free_nodes)}
     node_count, element_count = len(free_nodes), len(active_elements)
     unknown_count = node_count + element_count
     result = {'converged': True, 'message': '', 'iterations': 0, 'pressures': {}, 'mass_flows': {},
@@ -1865,9 +1962,15 @@ def solve_network(network, initial_guess=None, tolerance=1e-10, maximum_iteratio
     reference_mass_flow = 1e-3
     linear_resistances = [max(element.pressure_drop_function(reference_mass_flow) / reference_mass_flow, 1.0)
                           if element.kind == 'resistance' else 0.0 for element in active_elements]
+    guess_pressures = dict((initial_guess or {}).get('pressures', {}))
+    guess_flows = dict((initial_guess or {}).get('mass_flows', {}))
+    for chain in series_chains:          # a chain's flow = its first member's flow along the chain
+        first_member, sign = chain.members[0]
+        if guess_flows.get(first_member.key) is not None:
+            guess_flows[chain.key] = sign * guess_flows[first_member.key]
     warm_start_complete = bool(initial_guess) and all(
-        initial_guess.get('pressures', {}).get(node) is not None for node in node_index) and all(
-        initial_guess.get('mass_flows', {}).get(element.key) is not None for element in active_elements)
+        guess_pressures.get(node) is not None for node in node_index) and all(
+        guess_flows.get(element.key) is not None for element in active_elements)
     if not warm_start_complete:          # a full warm start needs no linearised pre-solve
         try:
             residuals, jacobian = residuals_and_jacobian(unknowns, linearised=True,
@@ -1881,11 +1984,11 @@ def solve_network(network, initial_guess=None, tolerance=1e-10, maximum_iteratio
             pass
     if initial_guess:
         for node, index in node_index.items():
-            value = initial_guess.get('pressures', {}).get(node)
+            value = guess_pressures.get(node)
             if value is not None and not math.isnan(value):
                 unknowns[index] = value / PRESSURE_SCALE
         for element_index, element in enumerate(active_elements):
-            value = initial_guess.get('mass_flows', {}).get(element.key)
+            value = guess_flows.get(element.key)
             if value is not None:
                 unknowns[node_count + element_index] = value / MASS_FLOW_SCALE
 
@@ -1925,7 +2028,13 @@ def solve_network(network, initial_guess=None, tolerance=1e-10, maximum_iteratio
     for node, index in node_index.items():
         result['pressures'][node] = float(unknowns[index] * PRESSURE_SCALE)
     for element_index, element in enumerate(active_elements):
-        result['mass_flows'][element.key] = float(unknowns[node_count + element_index] * MASS_FLOW_SCALE)
+        mass_flow = float(unknowns[node_count + element_index] * MASS_FLOW_SCALE)
+        if isinstance(element, SeriesChain):    # member flows and inner pressures, exactly
+            element.expand(mass_flow, pressure_of(unknowns, element.first_node),
+                           result['pressures'], result['mass_flows'])
+        else:
+            result['mass_flows'][element.key] = mass_flow
+    result['unknowns'] = unknown_count
     return result
 
 
@@ -1958,7 +2067,7 @@ def solve_model(model, initial_guess=None):
         return solution['mass_flows'].get(key, 0.0)
 
     results = {'converged': solution['converged'], 'message': solution['message'],
-               'iterations': solution['iterations'], 'blocks': {}, 'lines': {}, 'warnings': [],
+               'iterations': solution['iterations'], 'unknowns': solution.get('unknowns', 0), 'blocks': {}, 'lines': {}, 'warnings': [],
                'initial_guess': {'pressures': solution['pressures'], 'mass_flows': solution['mass_flows']},
                'density': density}
     results['warnings'].extend(network.issues)
@@ -3300,6 +3409,23 @@ def run_self_test():
     print(f"  [{'PASS' if keys_ok else 'FAIL'}] a warning whose numbers change is logged once")
     all_passed &= keys_ok
 
+    print("Series chains")
+    # resistances in series are solved as one element; the result must be the same solution
+    for label, chain_model in (('example', build_example_model()), ('example, pump off', None)):
+        if chain_model is None:
+            chain_model = build_example_model()
+            for block in chain_model['blocks']:
+                if block['type'] == 'pump':
+                    block['state'] = 1
+        collapsed = solve_network(build_network(chain_model))
+        full = solve_network(build_network(chain_model), collapse_series=False)
+        check(f"Series chains ({label}): same pressures everywhere",
+              max(abs(collapsed['pressures'][node] - value) for node, value in full['pressures'].items()
+                  if not math.isnan(value)) + 1.0, 1.0, 1e-6)
+        check(f"Series chains ({label}): same flow in every element",
+              max(abs(collapsed['mass_flows'][key] - value) for key, value in full['mass_flows'].items()) + 1.0,
+              1.0, 1e-12)
+        print(f"  unknowns {full['unknowns']} -> {collapsed['unknowns']}")
     print("Tube-to-tube tees")
     # A line tapped into another line, and three line ends meeting end to end, must each solve
     # exactly like the same tubes joined by a Tee block (same tube size everywhere, so there are
@@ -8848,7 +8974,7 @@ class MainWindow(QMainWindow):
                   f"iterations{', warm start failed' if warm_start_failed else ''}; canvas labels "
                   f"{drawn - solved:.2f} s; results table {finished - drawn:.2f} s) for "
                   f"{len(model['blocks'])} blocks, {len(model['lines'])} lines, "
-                  f"{len(results.get('junctions', []))} tube-to-tube tees")
+                  f"{len(results.get('junctions', []))} tube-to-tube tees, {results.get('unknowns', 0)} unknowns")
         if finished - started > self.SLOW_UPDATE_SECONDS:
             LOGGER.warning("Slow update: %s", timing)
         else:
