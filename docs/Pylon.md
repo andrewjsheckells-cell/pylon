@@ -6,7 +6,7 @@ A PySide6 desktop tool for drawing a spacecraft liquid-propulsion feed-system sc
 
 | | |
 |---|---|
-| Program | `pylon.py` (single file, version 1.27) |
+| Program | `pylon.py` (single file, version 1.28) |
 | Requires | Python ≥ 3.9, `PySide6`, `numpy` |
 | Run | `pip install PySide6 numpy` then `python pylon.py [schematic.pylon.json]` |
 | Solver self-test (no GUI) | `python pylon.py --selftest` |
@@ -133,6 +133,12 @@ An **assembly** is a group of connected parts, fittings and the tubes between th
 * **Drag a segment** to move it perpendicular to itself. Neighbouring segments stretch, and attached ends stay put because a stub is inserted automatically.
 * **Drag an end** (cross cursor) to detach it and drop it on a port, a line or empty space.
 * **Line-to-line connections:** an end dropped on another line forms a junction (filled dot). Hydraulically, the target line is split at that point. Its length and bend count are divided in proportion to the position along the drawn path.
+  * **Tube-to-tube tees.** Where a line taps into the middle of another line, the solver puts a **tee** there: the tapped line is the run and the tapping line the branch (with two or more tapping lines at the same point it is a cross). Where **three or more line ends** meet with no component port there, it is also a tee (a cross for four or more): the two tubes that leave the point most nearly in opposite directions on the drawing are the run, the others are branches. The tee losses are the same as the Tee block's (§4.3), each arm on its own tube's diameter. Its centre pressure, total flow, largest arm loss and the flow in each arm are listed in the Results table as *Tee L3 ← L10* (double-click selects the branch line). A pressure transducer tapped onto a line therefore sits on a tee, as it would in hardware.
+  * **Automatic joining.** Two tube ends connected end to end, with nothing else at that point (no port, no third tube), are one tube in all but name, so they are **joined into a single line automatically**. This happens when you finish a connection (a drag from a port, a drawn line, or a line end dropped on another line's end) and when deleting something leaves two tubes continuing one another (e.g. deleting the branch of a three-way joint). Chains of several tubes join in one go. The joined line keeps the drawn route and flow direction, the outer connections of both tubes, and any taps on either tube; the old line names go and the joined line takes one of them.
+    * **Neither tube has properties set** (brass): joined without asking.
+    * **Only one has properties set** (blue): joined without asking, with that tube's values (length, bends, tube size, name).
+    * **Both have properties set:** a *Join tubes* question shows both tubes' values and offers **Add together** (the lengths and bends added; tube size from the first tube), **Use L3's values**, **Use L10's values**, or **Keep as two tubes**. Tubes kept apart are not asked about again in that session; they stay an ideal (loss-free) joint.
+    * The join is one undo step (Ctrl+Z separates the tubes again). Scenarios saved earlier keep values for the old tubes, which no longer exist; update them if they should hold the joined tube's values.
 * **Right-click menu:** Properties…, **Add segment here** (splits the segment at the cursor; drag either half to form the new section), **Delete segment** (slides a neighbour so the segment collapses; refused if it would move an attached end or cross a block), Auto-route, Reverse direction, Delete line.
 * **Combine:** select several lines that form one continuous chain (Ctrl-click or rubber band), right-click → *Combine N lines into one…*. A properties dialog opens pre-filled with the first line's sizes, the summed length and the summed bend count. The result is one line with the same properties throughout. Lines tapped onto the old pieces are re-attached to the combined line.
 * **Labels:** above each tube (or beside a vertical one) a two-line label shows `ṁ g/s` and `ΔP psid`, with ΔP measured from inlet to outlet in the actual flow direction. Tubes with no flow show `0 g/s`. Each label tries several positions (above/below or right/left, and along the segment) and takes the first that clears every block and every other label. A filled arrow shows the flow direction. Lines with taps show one label per section. The toolbar's *Show flow / pressure data* (D) toggles them all, hovering reveals hidden ones, and right-click → *Show flow / pressure data here* sets them per line (§2.1a).
@@ -258,6 +264,7 @@ For a tube of inner diameter D, length L, area A, mass flow ṁ, velocity V = �
   | C₁ (laminar) | 0 | 0.625 | 1 | 1.25 |
 
   Turns over 180° are entered as several rows (e.g. 270° = 180° + 90°). Verify these factors against the Blevins bend-angle data for your geometry. A tapped line shares its length and every bend-table row between its sections pro rata.
+* **Tube-to-tube tees:** see *Tube-to-tube tee* in §4.3.
 * **f_T** is the fully turbulent friction factor of that tube, from Churchill at Re → ∞ on the Crane commercial-steel roughness basis (0.0018 in, editable).
 * **Port size mismatch:** where a tube meets a component port whose tubing ID differs by more than 2 %, the line gets a direction-aware loss:
   * contraction K = 0.5(1 − β²) on the small-area velocity [CRANE];
@@ -271,6 +278,7 @@ For a tube of inner diameter D, length L, area A, mass flow ṁ, velocity V = �
 | Thruster | Orifice from the inlet node to a fixed 0 psia boundary. Thrust F = ṁ·Isp·g₀ [SUTTON], g₀ = 9.80665 m/s² [NIST811]. Nominal flow = flow at the nominal inlet pressure. |
 | Tank | **Blowdown pressure source.** The tank is a fixed-pressure boundary at the pressure of the selected state (nominal / max / min, i.e. points on the blowdown curve), and that pressure is what pushes propellant from the tank to the pump inlet. The pump then sets the flow to everything downstream; with the pump OFF it is an orifice and tank pressure alone drives the flow through it. Bottom outlet: entrance loss K = 0.5 for outflow, exit K = 1.0 for back-flow, on the outlet-tube area. Top inlet: exit K = 1.0 for flow into the tank, entrance K = 0.5 for reverse flow, on the inlet-tube area. An unconnected top inlet carries no flow. **With a backfilling COPV on the top inlet** the boundary pressure is the COPV's delivered ullage pressure instead of the state pressure. |
 | Tee | Three arms meeting at a centre node. Crane through-run 20 f_T and through-branch 60 f_T are split so in + out = 20 f_T and in + branch = 60 f_T. Laminar K₁: run 200, branch 500. |
+| Tube-to-tube tee (no block) | Where a line taps into another line, or three or more line ends meet with no port: built like the Tee block. Each tube end gets its own node and an arm to a centre node: the two run arms 10 f_T + 100/Re each (run = 20 f_T, K₁ 200), each branch arm 50 f_T + 400/Re (run arm + branch arm = 60 f_T, K₁ 500), with f_T and Re on that arm's own tube diameter [CRANE], [HOOPER]. Run = the tapped line's two sections, or the two tubes leaving the joint most nearly in opposite directions; with more than one branch it is a cross (one branch arm each). The tee settings in *Fluid and loss coefficients…* apply. Two line ends joined end to end remain an ideal joint (the editor joins such tubes into one line). |
 | Cross | Four arms meeting at a centre node. Crane TP-410 gives no separate cross coefficient, so the cross uses the tee values: inlet and outlet arms 10 f_T each (run = 20 f_T), each branch arm 50 f_T (inlet + branch = 60 f_T); laminar K₁ likewise (run 200, branch 500). The tee settings in *Fluid and loss coefficients…* apply to crosses too. |
 | 90° fitting | Crane standard elbow K∞ = 30 f_T, laminar K₁ = 800, plus area change if inlet and outlet sizes differ |
 | Pressure transducer | Dead-end pressure tap: reads the node pressure where it is connected |
@@ -296,7 +304,7 @@ For a tube of inner diameter D, length L, area A, mass flow ṁ, velocity V = �
 ### 4.4 Network solution
 * **Network construction:**
   * Ports, line ends and line taps are merged into nodes with a union-find [TARJAN].
-  * Each line becomes one or more pipe elements (split at taps).
+  * Each line becomes one or more pipe elements (split at taps); each tap point, and each point where three or more line ends meet without a port, becomes a tube-to-tube tee (four or more tubes: a cross).
   * Each block becomes one or more elements between its port nodes.
   * Tanks and the thruster exhaust are fixed-pressure boundary nodes.
 * **Unknowns and equations:**
@@ -360,6 +368,8 @@ For an orifice in parallel with the pump (one side on the pump-outlet manifold, 
 * that a bend table of 3 × 90° gives exactly the same loss as a bend count of 3, and that 2 × 45° + 1 × 180° gives the two-K angle-factor sum (≈ 2.5 × one 90° bend);
 * that a pump driven past the end of its curve data is flagged as extrapolated, and that a warning whose numbers change counts as one warning in the log;
 * that an error report contains every section, the warnings by component name, and a schematic that reloads exactly;
+* that a line tapped into another line, and three line ends meeting end to end, each give exactly the flows of the same tubes joined by a Tee block; that the line-tee arms balance; that the run of a three-way joint is the pair of collinear tubes; and that two lines joined end to end equal one line of their total length;
+* that joining two tubes by *Add together* sums their lengths and bends (plain 90° counts stay counts, bend tables are merged) and gives the same pressure drop as the two tubes in series;
 * that a pump at a speed between two stored curves interpolates correctly (3500 rpm between 3000 and 4000 rpm gear-pump curves gives 396 mL/min at 200 psid), and that a speed outside the stored curves is reported.
 
 ## 6. File formats
@@ -412,7 +422,7 @@ For an orifice in parallel with the pump (one side on the pump-outlet manifold, 
 ## 7. Assumptions and limitations
 * Steady state only. No transients, water hammer, priming or tank blow-down; tank volume is used only for the time-to-empty estimate.
 * Single-phase incompressible liquid. A negative absolute pressure is flagged, but there is no cavitation or vapour-pressure model; use the pump min-inlet-pressure limit for NPSH margins.
-* Junctions between two line ends are ideal (no loss). Tees, crosses and 90° fittings carry the fitting losses; draw them as blocks where they matter.
+* A joint of exactly two line ends is ideal (no loss), and the editor joins such tubes into one line. Tube-to-tube tees use the Tee block's coefficients (Crane run/branch, not a direction-dependent combining/dividing model). A junction at a component port is ideal; the port's own fitting carries the loss. Draw a Tee, Cross or 90° fitting block where a different size or orientation matters.
 * Mismatched tube/port sizes are handled with contraction/expansion losses. Line-to-line size changes are not.
 * Unit system: pressures in psia/psid, lengths and diameters in inches, mass flow in g/s, pump curves in mL/min, thrust in N.
 
@@ -778,6 +788,23 @@ Orthogonal polylines (horizontal/vertical segments only) whose ends attach to a 
 - With 2+ lines selected: Combine N lines into one… (must form one chain; dialog pre-filled with the
   first line's sizes and the summed length and bends; taps re-attached), Auto-route selected,
   Delete selected.
+- Automatic joining (scene.schedule_auto_join → auto_join_lines, deferred with QTimer.singleShot(0)
+  after a port drag, a finished drawn line, a line-end drop, and delete_items (candidates: lines the
+  deleted lines were attached to, lines on deleted blocks' ports)). line_joint(line, end) gathers every
+  tube end meeting that end through end-to-end line attachments (path_fraction 0 or 1, either
+  direction) and flags a port or a mid-line tap there; linear_partner() = exactly two ends, two
+  different lines, same assembly, not locked. join_lines_end_to_end(): order so a tube whose END is
+  at the joint goes first (keeps the drawn direction; head-to-head / tail-to-tail reverse one);
+  points = first + second[1:] simplified; outer attachments kept (None if they pointed at either
+  tube); taps on either tube re-projected onto the joined line; new identifier; auto_routed False.
+  Values (joined_line_values): neither properties_defined -> first's properties, not defined, no
+  question; one defined -> its properties (defined); both -> MainWindow.ask_join_line_values
+  QMessageBox "Join tubes" listing both (line_template_summary) with buttons Add together (L in,
+  N bends) [summed_line_properties: lengths summed, tube size from the first, 90° counts summed when
+  both are plain counts with the same r/D, else bend tables merged], Use X's values, Use Y's
+  values, Keep as two tubes (escape; pair stored in scene.declined_line_joins, not asked again).
+  Name: the chosen tube's, else a given name of the other. Repeats on the joined line (chains).
+  Status message "L3 and L10 joined into one tube, … (ID · length · bends)".
 - Line properties (LineDialog = PropertyDialog + bend-table widget via the add_extra_widgets hook): OD,
   ID, length, number of 90° bends, bend r/D, roughness, and a bend table (rows angle 0-180°, r/D, count;
   parse_bend_table_rows validates; non-empty table replaces bend count / r/D; stored as
@@ -835,6 +862,16 @@ PHYSICS
 - Solver:
   - Union-find merges ports, line ends and taps into nodes; lines are split at taps (length and bends
     split pro rata).
+  - Tube-to-tube tees (build_network → add_line_junction): line ends joined end to end are grouped
+    (path_fraction 0/1). A group with a port, or of two ends, is one node. A group of 3+ ends with no
+    port is a junction: each end keeps its own node; run = the pair whose drawn directions away from
+    the point have the most negative dot product; others are branches. A mid-line tap splits the
+    tapped line into sections ending at <line>:tapN:upstream / :downstream (the run arms) and every
+    tapping end is a branch arm. Arms run outer node -> <id>:center with two-K K = run/2 per run arm
+    and branch − run/2 per branch arm (tee settings), f_T and Re on each arm's tube ID; kind tee (one
+    branch) or cross. results['junctions'] = [{identifier, kind, lines, center_pressure, arms:
+    [{role, line, mass_flow (into the centre), outer_pressure, pressure_drop}]}]; the Results table
+    lists them as "Tee <run> ← <branch>" (centre pressure, largest arm loss, through flow, arm flows).
   - Unknowns are free-node pressures and element flows; equations are node mass balances plus element
     laws.
   - Quadratic terms are regularised as ṁ√(ṁ²+ε²); start from a linearised pre-solve; damped Newton
@@ -966,4 +1003,5 @@ CODE CONVENTIONS
 | 1.24 | 2026-10-14 | Fix: the 1.23 logo crashed at start-up with a RecursionError (its size hint asked the toolbar for its size hint, which asks the logo back). The logo now reads only the toolbar's current height and follows height changes through an event filter. |
 | 1.25 | 2026-10-14 | The logo is now a drawn **PYLON** logotype (wide geometric capitals with chamfered corners, brushed-gold fill, engraved outline, shadow) instead of text in the panel-title font, and the ≡≡≡ bars are gone. It needs no font file and looks the same on every computer. |
 | 1.26 | 2026-10-14 | The logo is centred horizontally over the right-hand panel (System status / Component data) and follows it when the window or the panel is resized; it moves right only as far as needed to clear the toolbar buttons. |
+| 1.28 | 2026-11-17 | **Tube-to-tube tees:** a line tapped into another line, or three or more line ends meeting without a port, is now solved as a tee (cross for four or more) with the Tee block's losses, and listed in the Results table; before, these joints were loss-free. **Automatic joining:** two tubes connected end to end with nothing else there are joined into one line; when both have properties set you choose *Add together*, either tube's values, or *Keep as two tubes*. Self-test checks added. The example's results are unchanged at the precision shown. |
 | 1.27 | 2026-11-17 | **View → Colour theme:** a *Neutral (light)* theme alongside the dark *Console* one — light grey panels with thin flat frames, and the schematic in black on a white background (blue selection, red warnings, dark-blue lines with set properties). Switches live and is remembered between sessions. No change to the physics or file format. |

@@ -92,7 +92,7 @@ import uuid
 import numpy
 
 APPLICATION_NAME = "Pylon"
-APPLICATION_VERSION = "1.27"
+APPLICATION_VERSION = "1.28"
 FILE_FORMAT_VERSION = 3
 
 # Program log (errors and warnings).  Silent until the GUI attaches its handlers (see ErrorLog).
@@ -315,6 +315,33 @@ def bend_table_summary(properties):
     detail = ', '.join(f"{format_number(count)} × {format_number(angle)}° r/D {format_number(radius_ratio)}"
                        for angle, radius_ratio, count in rows)
     return f"{format_number(total)} bend{'s' if total != 1 else ''} ({detail})"
+
+
+def summed_line_properties(first_properties, second_properties):
+    """Properties for two tubes joined into one, adding their lengths and bends.
+
+    Tube size and roughness come from the first tube.  The bends are added as 90° counts when
+    both tubes use plain 90° counts with the same bend radius; otherwise both tubes' bends are
+    merged into one bend table."""
+    properties = copy.deepcopy(first_properties)
+    properties['length'] = (float(first_properties.get('length', 0) or 0)
+                            + float(second_properties.get('length', 0) or 0))
+    plain_counts = not first_properties.get('bend_table') and not second_properties.get('bend_table')
+    same_radius = (abs(float(first_properties.get('bend_radius_ratio', 3.0))
+                       - float(second_properties.get('bend_radius_ratio', 3.0))) < 1e-12)
+    total_counts = (float(first_properties.get('bend_count', 0) or 0)
+                    + float(second_properties.get('bend_count', 0) or 0))
+    if plain_counts and same_radius:
+        properties['bend_count'] = int(round(total_counts)) if float(total_counts).is_integer() else total_counts
+        properties.pop('bend_table', None)
+        return properties
+    merged = {}
+    for source in (first_properties, second_properties):
+        for angle, radius_ratio, count in line_bend_table(source):
+            merged[(angle, radius_ratio)] = merged.get((angle, radius_ratio), 0) + count
+    properties['bend_table'] = [[angle, radius_ratio, count] for (angle, radius_ratio), count in merged.items()]
+    properties['bend_count'] = int(round(sum(count for count in merged.values())))
+    return properties
 
 
 def line_template_summary(template):
@@ -1298,6 +1325,7 @@ class Network:
         self.viscosity = DEFAULT_FLUID['viscosity_millipascal_seconds'] * 1e-3
         self.settings = dict(DEFAULT_SETTINGS)
         self.backfill = {}          # tank identifier -> (ullage pressure psia, COPV identifier)
+        self.line_junctions = []    # tube-to-tube tees / crosses (see add_line_junction)
 
     def node(self, key):
         return self.union_find.find(key)
@@ -1322,32 +1350,125 @@ def build_network(model):
     pending_elements = []   # (kind, first node, second node, owner, key, payload)
 
     # ---- line end points and taps -----------------------------------------------
-    taps = {line_identifier: [] for line_identifier in lines}
+    # Line ends joined end to end form groups.  A group that meets a component port is an ideal
+    # joint (the port's own fitting carries the loss).  Where three or more tube ends meet with no
+    # port, or where a line taps into the middle of another line, the joint is solved as a tee
+    # (a cross for four or more tubes) with the same loss coefficients as the Tee block
+    # (add_line_junction below).  Two tube ends joined end to end are an ideal joint.
+    end_groups = UnionFind()
+    port_ends = set()
+    tap_requests = []                 # (tapped line, path fraction, tapping end key)
     for line in lines.values():
         line_identifier = line['identifier']
         for end_name in ('start', 'end'):
             attachment = line.get(end_name)
             end_key = f"{line_identifier}:{end_name}"
             network.union_find.find(end_key)
+            end_groups.find(end_key)
             if not attachment:
                 continue
             if attachment.get('kind') == 'port' and attachment.get('block') in blocks:
                 network.union_find.union(f"{attachment['block']}:{attachment['port']}", end_key)
+                port_ends.add(end_key)
             elif (attachment.get('kind') == 'line' and attachment.get('line') in lines
                   and attachment['line'] != line_identifier):
                 path_fraction = float(attachment.get('path_fraction', 0.0))
                 if path_fraction <= 1e-6:
-                    network.union_find.union(f"{attachment['line']}:start", end_key)
+                    end_groups.union(f"{attachment['line']}:start", end_key)
                 elif path_fraction >= 1 - 1e-6:
-                    network.union_find.union(f"{attachment['line']}:end", end_key)
+                    end_groups.union(f"{attachment['line']}:end", end_key)
                 else:
-                    taps[attachment['line']].append((path_fraction, end_key))
+                    tap_requests.append((attachment['line'], path_fraction, end_key))
+    end_group_members = {}
+    for end_key in list(end_groups.parent):
+        end_group_members.setdefault(end_groups.find(end_key), []).append(end_key)
+    taps = {line_identifier: [] for line_identifier in lines}
+    tapping_roots = set()
+    for tapped_line, path_fraction, end_key in tap_requests:
+        root = end_groups.find(end_key)
+        tapping_roots.add(root)
+        taps[tapped_line].append((path_fraction, sorted(end_group_members[root])))
+    junction_roots = set()            # three or more tube ends meeting end to end, no port
+    for root, members in end_group_members.items():
+        if root in tapping_roots:
+            continue                  # each tapping tube end becomes a branch arm of that tap's tee
+        if len(members) >= 3 and not any(member in port_ends for member in members):
+            junction_roots.add(root)  # each tube end becomes an arm of a tee / cross
+            continue
+        for end_key in members[1:]:   # ideal joint: one node
+            network.union_find.union(members[0], end_key)
+
+    def line_inner_diameter(line_identifier):
+        properties = lines[line_identifier].get('properties', {})
+        return max(float(properties.get('inner_diameter', 0.18)), 1e-4) * METERS_PER_INCH
+
+    def end_direction(end_key):
+        """Unit vector along the tube, pointing away from this end (from the drawn route)."""
+        line_identifier, end_name = end_key.rsplit(':', 1)
+        points = lines[line_identifier].get('points') or []
+        if len(points) < 2:
+            return (0.0, 0.0)
+        (x0, y0), (x1, y1) = (points[0], points[1]) if end_name == 'start' else (points[-1], points[-2])
+        length = math.hypot(x1 - x0, y1 - y0)
+        return ((x1 - x0) / length, (y1 - y0) / length) if length > 0 else (0.0, 0.0)
+
+    def add_line_junction(identifier, run_arms, branch_arms, lines_involved):
+        """Tube-to-tube tee (cross for more than one branch), modelled like the Tee block: arms
+        from the outer nodes to a centre node; Crane flow-through-run 20 f_T split over the two run
+        arms and flow-through-branch 60 f_T = run arm + branch arm   [CRANE]; laminar terms
+        K_1/Re split the same way   [HOOPER].  Each arm uses its own tube diameter for f_T and Re.
+        run_arms / branch_arms: [(outer node, diameter, line identifier)]."""
+        center_node = f"{identifier}:center"
+        run_multiplier = settings['tee_run_friction_multiplier']
+        branch_multiplier = settings['tee_branch_friction_multiplier']
+        run_laminar = settings['tee_run_laminar_coefficient']
+        branch_laminar = settings['tee_branch_laminar_coefficient']
+        arms = []
+        for arm_index, (outer_node, arm_diameter, line_identifier) in enumerate(run_arms):
+            arms.append((f"run{arm_index + 1}", 'run', outer_node, arm_diameter, line_identifier,
+                         run_multiplier / 2, run_laminar / 2))
+        for arm_index, (outer_node, arm_diameter, line_identifier) in enumerate(branch_arms):
+            arms.append((f"branch{arm_index + 1}", 'branch', outer_node, arm_diameter, line_identifier,
+                         branch_multiplier - run_multiplier / 2, branch_laminar - run_laminar / 2))
+        junction = {'identifier': identifier, 'kind': 'tee' if len(branch_arms) <= 1 else 'cross',
+                    'center_node': center_node, 'lines': lines_involved, 'arms': []}
+        for arm_name, role, outer_node, arm_diameter, line_identifier, friction_multiplier, laminar_coefficient in arms:
+            element_key = f"{identifier}#{arm_name}"
+            # junction arm: K_turbulent = n * f_T (run or branch multiplier)              [CRANE]
+            # plus laminar term K_1 / Re (two-K method)                                  [HOOPER]
+            # positive arm flow is from the outer node into the centre
+            pending_elements.append(('resistance', outer_node, center_node, ('junction', identifier, arm_name),
+                                     element_key,
+                                     make_two_k_pressure_drop_function(
+                                         friction_multiplier * fully_turbulent_friction_factor(arm_diameter, settings),
+                                         laminar_coefficient, arm_diameter, density, viscosity)))
+            junction['arms'].append({'key': element_key, 'role': role, 'line': line_identifier,
+                                     'outer_node': outer_node})
+        network.line_junctions.append(junction)
+
+    # three or more tube ends meeting end to end, with no port: a tee / cross at that point
+    for root in sorted(junction_roots):
+        members = end_group_members[root]
+        directions = {member: end_direction(member) for member in members}
+        ordered = sorted(members)
+        # the run is the pair of tubes leaving the joint most nearly in opposite directions
+        first, second = min(((a, b) for index, a in enumerate(ordered) for b in ordered[index + 1:]),
+                            key=lambda pair: (directions[pair[0]][0] * directions[pair[1]][0]
+                                              + directions[pair[0]][1] * directions[pair[1]][1]))
+        joint_identifier = f"joint:{ordered[0]}"
+        run = [(member, line_inner_diameter(member.rsplit(':', 1)[0]), member.rsplit(':', 1)[0])
+               for member in (first, second)]
+        branches = [(member, line_inner_diameter(member.rsplit(':', 1)[0]), member.rsplit(':', 1)[0])
+                    for member in ordered if member not in (first, second)]
+        add_line_junction(joint_identifier, run, branches,
+                          [member.rsplit(':', 1)[0] for member in (first, second)]
+                          + [arm[2] for arm in branches])
 
     # ---- line sections (a line is split where other lines tap into it) ------------
     for line in lines.values():
         line_identifier = line['identifier']
         properties = line.get('properties', {})
-        diameter = max(float(properties.get('inner_diameter', 0.18)), 1e-4) * METERS_PER_INCH
+        diameter = line_inner_diameter(line_identifier)
         total_length = max(float(properties.get('length', 1.0)), 1e-3) * METERS_PER_INCH
         bends = line_bend_table(properties)            # bend table, or n x 90° bends
         roughness = max(float(properties.get('roughness', 0.0)), 0.0) * METERS_PER_INCH
@@ -1369,19 +1490,31 @@ def build_network(model):
                         # positive line flow is start -> end
                         end_area_change[end_name] = ((port_to_line, line_to_port) if end_name == 'start'
                                                      else (line_to_port, port_to_line))
-        sorted_taps = sorted(taps[line_identifier])
+        # merge taps at the same point; each tap point becomes a tee in the line
+        tap_points = []                                 # [path fraction, [tapping end keys]]
+        for path_fraction, members in sorted(taps[line_identifier]):
+            if tap_points and path_fraction - tap_points[-1][0] < 1e-6:
+                tap_points[-1][1].extend(members)
+            else:
+                tap_points.append([path_fraction, list(members)])
         cut_fractions = [0.0]
-        cut_nodes = [f"{line_identifier}:start"]
-        for path_fraction, end_key in sorted_taps:
-            if path_fraction - cut_fractions[-1] < 1e-6:
-                network.union_find.union(cut_nodes[-1], end_key)
-                continue
-            tap_node = f"{line_identifier}:tap{len(cut_fractions)}"
+        section_start_nodes = [f"{line_identifier}:start"]
+        section_end_nodes = []
+        for tap_index, (path_fraction, members) in enumerate(tap_points, start=1):
+            tap_identifier = f"{line_identifier}:tap{tap_index}"
+            upstream_node, downstream_node = f"{tap_identifier}:upstream", f"{tap_identifier}:downstream"
             cut_fractions.append(path_fraction)
-            cut_nodes.append(tap_node)
-            network.union_find.union(tap_node, end_key)
+            section_end_nodes.append(upstream_node)
+            section_start_nodes.append(downstream_node)
+            # every tube end meeting at the tap is a branch arm of the tee (two or more: a cross)
+            branch_arms = [(member, line_inner_diameter(member.rsplit(':', 1)[0]), member.rsplit(':', 1)[0])
+                           for member in sorted(members)]
+            add_line_junction(tap_identifier,
+                              [(upstream_node, diameter, line_identifier),
+                               (downstream_node, diameter, line_identifier)],
+                              branch_arms, [line_identifier] + [arm[2] for arm in branch_arms])
         cut_fractions.append(1.0)
-        cut_nodes.append(f"{line_identifier}:end")
+        section_end_nodes.append(f"{line_identifier}:end")
         sections = []
         section_count = len(cut_fractions) - 1
         for section_index in range(section_count):
@@ -1398,11 +1531,12 @@ def build_network(model):
                 diameter, total_length * fraction, 0, 3.0, roughness, density, viscosity, settings,
                 end_coefficients, bends=[(angle, radius_ratio, count * fraction)
                                          for angle, radius_ratio, count in bends])
-            pending_elements.append(('resistance', cut_nodes[section_index], cut_nodes[section_index + 1],
+            pending_elements.append(('resistance', section_start_nodes[section_index],
+                                     section_end_nodes[section_index],
                                      ('line', line_identifier, section_index), element_key,
                                      pressure_drop_function))
-            sections.append((start_fraction, end_fraction, element_key, cut_nodes[section_index],
-                             cut_nodes[section_index + 1], diameter))
+            sections.append((start_fraction, end_fraction, element_key, section_start_nodes[section_index],
+                             section_end_nodes[section_index], diameter))
         network.line_sections[line_identifier] = sections
 
     # ---- blocks ----------------------------------------------------------------------
@@ -2031,6 +2165,20 @@ def solve_model(model, initial_guess=None):
                 'calculated_velocity': first_section['velocity'],
                 'calculated_reynolds_number': first_section['reynolds_number']}
         results['lines'][line_identifier] = line_result
+    # tube-to-tube tees and crosses: centre pressure, and flow and loss through each arm
+    results['junctions'] = []
+    for junction in network.line_junctions:
+        center_pressure = pressure_at(junction['center_node'])
+        arms = []
+        for arm in junction['arms']:
+            outer_pressure = pressure_at(arm['outer_node'])
+            arms.append({'role': arm['role'], 'line': arm['line'],
+                         'mass_flow': mass_flow_of(arm['key']),             # positive into the centre
+                         'outer_pressure': outer_pressure,
+                         'pressure_drop': outer_pressure - center_pressure})   # outer node -> centre
+        results['junctions'].append({'identifier': junction['identifier'], 'kind': junction['kind'],
+                                     'lines': junction['lines'], 'center_pressure': center_pressure,
+                                     'arms': arms})
     return results
 
 
@@ -3144,6 +3292,86 @@ def run_self_test():
     print(f"  [{'PASS' if keys_ok else 'FAIL'}] a warning whose numbers change is logged once")
     all_passed &= keys_ok
 
+    print("Tube-to-tube tees")
+    # A line tapped into another line, and three line ends meeting end to end, must each solve
+    # exactly like the same tubes joined by a Tee block (same tube size everywhere, so there are
+    # no contraction / expansion losses).  Two line ends joined end to end stay an ideal joint.
+    tube_inner_diameter = tube_inner_diameter_inches(DEFAULT_TUBE)
+
+    def junction_model(lines_spec):
+        built = {'fluid': dict(DEFAULT_FLUID), 'settings': {},
+                 'blocks': [{'identifier': 'tank', 'type': 'tank', 'state': 0,
+                             'properties': dict(default_block_properties('tank'), nominal_pressure=300.0,
+                                                outlet_tubing_size=DEFAULT_TUBE)},
+                            {'identifier': 'tee', 'type': 'tee', 'state': 0,
+                             'properties': default_block_properties('tee')}]
+                 + [{'identifier': name, 'type': 'thruster', 'state': 0,
+                     'properties': dict(default_block_properties('thruster'), inlet_tubing_size=DEFAULT_TUBE,
+                                        orifice_diameter=diameter)}
+                    for name, diameter in (('run_thruster', 0.03), ('branch_thruster', 0.02))],
+                 'lines': []}
+        for identifier, points, start, end, length in lines_spec:
+            built['lines'].append({'identifier': identifier, 'points': points, 'start': start, 'end': end,
+                                   'properties': dict(default_line_properties(), length=length,
+                                                      inner_diameter=tube_inner_diameter)})
+        return built
+
+    def port_end(block, port_name):
+        return {'kind': 'port', 'block': block, 'port': port_name}
+
+    def line_end(line_identifier, path_fraction):
+        return {'kind': 'line', 'line': line_identifier, 'path_fraction': path_fraction}
+    tee_block_results = solve_model(junction_model([
+        ('feed', [[0, 0], [100, 0]], port_end('tank', 'outlet'), port_end('tee', 'inlet'), 6.0),
+        ('run', [[100, 0], [200, 0]], port_end('tee', 'outlet'), port_end('run_thruster', 'inlet'), 6.0),
+        ('side', [[100, 0], [100, 100]], port_end('tee', 'branch'), port_end('branch_thruster', 'inlet'), 6.0)]))
+    tap_model = junction_model([
+        ('main', [[0, 0], [200, 0]], port_end('tank', 'outlet'), port_end('run_thruster', 'inlet'), 12.0),
+        ('side', [[100, 0], [100, 100]], line_end('main', 0.5), port_end('branch_thruster', 'inlet'), 6.0)])
+    tap_results = solve_model(tap_model)
+    joint_results = solve_model(junction_model([
+        ('feed', [[0, 0], [100, 0]], port_end('tank', 'outlet'), None, 6.0),
+        ('run', [[100, 0], [200, 0]], line_end('feed', 1.0), port_end('run_thruster', 'inlet'), 6.0),
+        ('side', [[100, 0], [100, 100]], line_end('feed', 1.0), port_end('branch_thruster', 'inlet'), 6.0)]))
+    for label, solved in (('a line taps into a line', tap_results), ('three line ends meet', joint_results)):
+        for thruster in ('run_thruster', 'branch_thruster'):
+            check(f"Tee where {label}: {thruster.replace('_', ' ')} flow = Tee block",
+                  solved['blocks'][thruster]['mass_flow'], tee_block_results['blocks'][thruster]['mass_flow'], 1e-7)
+    junctions = tap_results['junctions']
+    print(f"  tap junction: {junctions[0]['kind']} of {', '.join(junctions[0]['lines'])}; "
+          f"joint junction run = {', '.join(joint_results['junctions'][0]['lines'][:2])}")
+    check('Line tee arms balance (flow in = flow out)',
+          sum(arm['mass_flow'] for arm in junctions[0]['arms']) + 1.0, 1.0, 1e-9)
+    # the run of a three-way joint is the pair of tubes leaving it in opposite directions
+    check('Three-way joint run = the two collinear tubes', float(sorted(joint_results['junctions'][0]['lines'][:2])
+                                                                 == ['feed', 'run']), 1.0, 0)
+    straight_two = solve_model(junction_model([
+        ('feed', [[0, 0], [100, 0]], port_end('tank', 'outlet'), None, 6.0),
+        ('run', [[100, 0], [200, 0]], line_end('feed', 1.0), port_end('run_thruster', 'inlet'), 6.0)]))
+    one_tube = solve_model(junction_model([
+        ('feed', [[0, 0], [200, 0]], port_end('tank', 'outlet'), port_end('run_thruster', 'inlet'), 12.0)]))
+    check('Two lines joined end to end = one line (ideal joint)',
+          straight_two['blocks']['run_thruster']['mass_flow'], one_tube['blocks']['run_thruster']['mass_flow'], 1e-9)
+    print("Joining two tubes into one")
+    # 'Add together' sums lengths and bends; plain 90° counts with the same r/D stay counts,
+    # otherwise both tubes' bends go into one bend table
+    first_tube = dict(default_line_properties(), length=12.0, bend_count=2, bend_radius_ratio=3.0)
+    second_tube = dict(default_line_properties(), length=6.0, bend_count=1, bend_radius_ratio=3.0)
+    summed = summed_line_properties(first_tube, second_tube)
+    check('Joined tube length = sum', summed['length'], 18.0, 1e-12)
+    check('Joined tube 90° bends = sum', float(summed['bend_count']), 3.0, 1e-12)
+    second_tube_with_table = dict(second_tube, bend_table=[[45, 1.5, 2]])
+    summed = summed_line_properties(first_tube, second_tube_with_table)
+    check('Joined tube with a bend table keeps every bend',
+          float(sum(count for _, _, count in line_bend_table(summed))), 4.0, 1e-12)
+    joined_drop = make_tube_pressure_drop_function(0.18 * METERS_PER_INCH, 18 * METERS_PER_INCH, 0, 3.0, 0.0,
+                                                   1004.0, 0.9e-3, DEFAULT_SETTINGS,
+                                                   bends=line_bend_table(summed))(0.004)
+    separate_drops = sum(make_tube_pressure_drop_function(0.18 * METERS_PER_INCH, length * METERS_PER_INCH, 0, 3.0,
+                                                          0.0, 1004.0, 0.9e-3, DEFAULT_SETTINGS,
+                                                          bends=line_bend_table(properties))(0.004)
+                         for length, properties in ((12.0, first_tube), (6.0, second_tube_with_table)))
+    check('Joined tube ΔP = sum of the two tubes (same size)', joined_drop, separate_drops, 1e-9)
     print("Line bend table")
     bend_line = {'bend_count': 3, 'bend_radius_ratio': 1.5}
     as_table = {'bend_count': 0, 'bend_table': [[90, 1.5, 3]]}
@@ -5281,6 +5509,8 @@ class LineItem(DataLabelVisibility, QGraphicsPathItem):
                 self.set_points(simplify(self.points))
             scene.refresh_port_markers()
             scene.notify()
+            scene.schedule_auto_join([self.identifier] + ([attachment['line']] if attachment
+                                                          and attachment.get('kind') == 'line' else []))
 
 
 # -----------------------------------------------------------------------------
@@ -5296,6 +5526,7 @@ class SchematicScene(QGraphicsScene):
         self.setSceneRect(-3000, -2000, 9000, 6000)
         self.blocks = {}
         self.lines = {}
+        self.declined_line_joins = set()   # pairs of line identifiers the user chose to keep separate
         self.mode = 'select'
         self.connection = None      # port drag in progress
         self.drawing = None         # draw-mode polyline in progress
@@ -5734,6 +5965,18 @@ class SchematicScene(QGraphicsScene):
         ask = getattr(self.main_window, 'confirm_delete_defined_lines', None)
         if confirm and defined_lines and ask is not None and not ask(defined_lines):
             return
+        # tubes that may continue straight into one another once these items are gone
+        # (e.g. the branch of a tube-to-tube tee, or a component two tubes met at)
+        removed_lines = {item.identifier for item in items if isinstance(item, LineItem)}
+        removed_blocks = {item.identifier for item in items if isinstance(item, BlockItem)}
+        join_candidates = []
+        for line in self.lines.values():
+            if line.identifier in removed_lines:
+                join_candidates.extend(attachment['line'] for attachment in (line.start, line.end)
+                                       if attachment and attachment.get('kind') == 'line')
+            elif any(attachment and attachment.get('kind') == 'port' and attachment.get('block') in removed_blocks
+                     for attachment in (line.start, line.end)):
+                join_candidates.append(line.identifier)
         for item in list(items):
             if isinstance(item, BlockItem) and item.identifier in self.blocks:
                 self.remove_block(item)
@@ -5742,6 +5985,7 @@ class SchematicScene(QGraphicsScene):
         self._prune_assemblies()
         self.refresh_port_markers()
         self.notify()
+        self.schedule_auto_join([identifier for identifier in join_candidates if identifier not in removed_lines])
 
     # ---- copy / paste -------------------------------------------------------
     def copy_payload(self, items):
@@ -6013,10 +6257,11 @@ class SchematicScene(QGraphicsScene):
         start_attachment = {'kind': 'port', 'block': block.identifier, 'port': port.name}
         properties = default_line_properties()
         properties.update(self.tubing_properties_for(start_attachment))
-        self.add_line({'points': self.route(start, port.direction, target_point, target_direction),
-                       'start': start_attachment, 'end': attachment, 'properties': properties,
-                       'auto_routed': True})
+        new_line = self.add_line({'points': self.route(start, port.direction, target_point, target_direction),
+                                  'start': start_attachment, 'end': attachment, 'properties': properties,
+                                  'auto_routed': True})
         self.notify()
+        self.schedule_auto_join([new_line.identifier])
 
     # ---- draw mode -----------------------------------------------------------
     @staticmethod
@@ -6082,9 +6327,10 @@ class SchematicScene(QGraphicsScene):
         properties = default_line_properties()
         properties.update(self.tubing_properties_for(start_attachment)
                           or self.tubing_properties_for(end_attachment))
-        self.add_line({'points': points, 'start': start_attachment, 'end': end_attachment,
-                       'properties': properties, 'auto_routed': False})
+        new_line = self.add_line({'points': points, 'start': start_attachment, 'end': end_attachment,
+                                  'properties': properties, 'auto_routed': False})
         self.notify()
+        self.schedule_auto_join([new_line.identifier])
 
     def cancel_drawing(self):
         self.drawing = None
@@ -6212,6 +6458,173 @@ class SchematicScene(QGraphicsScene):
         combined_line.setSelected(True)
         self.refresh_port_markers()
         self.notify()
+
+    # ---- automatic joining of tubes that continue one another --------------------
+    # Two tube ends joined end to end, with nothing else at that point, are one tube in all
+    # but name, so they are joined into a single line as soon as they are connected (or as
+    # soon as a third tube at that point is removed).  Where three or more tube ends meet,
+    # or a tube taps into the middle of another, the solver puts a tee there instead.
+    def line_joint(self, line, which_end):
+        """The tube ends that meet `line`'s `which_end` through end-to-end line attachments:
+        (set of (line identifier, end name), True if a port or a mid-line tap is also there)."""
+        members, pending, other_connection = set(), [(line.identifier, which_end)], False
+        while pending:
+            identifier, end_name = pending.pop()
+            if (identifier, end_name) in members or identifier not in self.lines:
+                continue
+            members.add((identifier, end_name))
+            attachment = getattr(self.lines[identifier], end_name)
+            if attachment:
+                path_fraction = float(attachment.get('path_fraction', 0) or 0)
+                if (attachment.get('kind') == 'line' and attachment.get('line') in self.lines
+                        and attachment.get('line') != identifier and (path_fraction <= 1e-6
+                                                                       or path_fraction >= 1 - 1e-6)):
+                    pending.append((attachment['line'], 'start' if path_fraction <= 1e-6 else 'end'))
+                else:
+                    other_connection = True       # a port, or this end taps into the middle of a line
+            for other_line in self.lines.values():
+                for other_end in ('start', 'end'):
+                    attachment = getattr(other_line, other_end)
+                    if not (attachment and attachment.get('kind') == 'line' and attachment.get('line') == identifier
+                            and other_line.identifier != identifier):
+                        continue
+                    path_fraction = float(attachment.get('path_fraction', 0) or 0)
+                    if (end_name == 'start' and path_fraction <= 1e-6) or (end_name == 'end'
+                                                                           and path_fraction >= 1 - 1e-6):
+                        pending.append((other_line.identifier, other_end))
+        return members, other_connection
+
+    def linear_partner(self, line, which_end):
+        """(other line, its end) when `line`'s `which_end` continues straight into exactly one
+        other tube with nothing else at that point, else None."""
+        members, other_connection = self.line_joint(line, which_end)
+        if other_connection or len(members) != 2:
+            return None
+        partner_identifier, partner_end = next(member for member in members
+                                               if member != (line.identifier, which_end))
+        other_line = self.lines.get(partner_identifier)
+        if other_line is None or other_line is line or len(line.points) < 2 or len(other_line.points) < 2:
+            return None
+        if line.assembly_identifier != other_line.assembly_identifier or self.is_locked_item(line):
+            return None
+        return other_line, partner_end
+
+    def schedule_auto_join(self, line_identifiers):
+        """Join tubes that now continue one another, once the current mouse event has finished."""
+        identifiers = [identifier for identifier in line_identifiers if identifier]
+        if identifiers and not self.loading:
+            QTimer.singleShot(0, lambda: self.auto_join_lines(identifiers))
+
+    def auto_join_lines(self, line_identifiers):
+        pending, joined = list(dict.fromkeys(line_identifiers)), False
+        while pending:
+            line = self.lines.get(pending.pop(0))
+            if line is None:
+                continue
+            for which_end in ('start', 'end'):
+                partner = self.linear_partner(line, which_end)
+                if partner is None:
+                    continue
+                other_line, other_end = partner
+                pair = frozenset((line.identifier, other_line.identifier))
+                if pair in self.declined_line_joins:
+                    continue
+                joined_line = self.join_lines_end_to_end(line, which_end, other_line, other_end)
+                if joined_line is None:                       # "Keep as two lines": don't ask again
+                    self.declined_line_joins.add(pair)
+                    continue
+                joined = True
+                pending.insert(0, joined_line.identifier)     # it may continue into a third tube
+                break
+        if joined:
+            self.refresh_port_markers()
+            self.notify()
+
+    def joined_line_values(self, first_line, second_line):
+        """Properties, 'properties set' flag, name and 'name given' flag for two joined tubes, or
+        None to keep them separate.  Only when both tubes have properties set is the user asked
+        whether to add their lengths and bends together or use one tube's values."""
+        def named(preferred, other):
+            if preferred.name_given or not other.name_given:
+                return preferred.name, preferred.name_given
+            return other.name, True
+        if first_line.properties_defined and second_line.properties_defined:
+            choice = self.main_window.ask_join_line_values(first_line, second_line)
+        elif first_line.properties_defined:
+            choice = 'first'
+        elif second_line.properties_defined:
+            choice = 'second'
+        else:
+            choice = 'neither'
+        if choice is None:
+            return None
+        if choice == 'sum':
+            return (summed_line_properties(first_line.properties, second_line.properties), True,
+                    *named(first_line, second_line))
+        if choice == 'second':
+            return copy.deepcopy(second_line.properties), True, *named(second_line, first_line)
+        return (copy.deepcopy(first_line.properties), choice == 'first', *named(first_line, second_line))
+
+    def join_lines_end_to_end(self, first_line, first_end, second_line, second_end):
+        """Replace two tubes whose ends meet (first_line's first_end at second_line's second_end)
+        by one line running through the first tube and on through the second.  Returns the new
+        line, or None if the user chose to keep them separate."""
+        if first_end == 'start' and second_end == 'end':
+            # keep the drawn flow direction: the tube whose end is at the joint goes first
+            first_line, first_end, second_line, second_end = second_line, second_end, first_line, first_end
+        first_points = list(first_line.points) if first_end == 'end' else list(reversed(first_line.points))
+        second_points = list(second_line.points) if second_end == 'start' else list(reversed(second_line.points))
+        start_attachment = first_line.start if first_end == 'end' else first_line.end
+        end_attachment = second_line.end if second_end == 'start' else second_line.start
+        selected = first_line.isSelected() or second_line.isSelected()
+        if self.main_window is not None and first_line.properties_defined and second_line.properties_defined:
+            self.clearSelection()             # show which tubes the question is about
+            first_line.setSelected(True)
+            second_line.setSelected(True)
+        values = self.joined_line_values(first_line, second_line)
+        if values is None:
+            return None
+        properties, defined, name, name_given = values
+        joined_identifiers = {first_line.identifier, second_line.identifier}
+
+        def outside(attachment):
+            if attachment and attachment.get('kind') == 'line' and attachment.get('line') in joined_identifiers:
+                return None                   # the two tubes formed a loop
+            return copy.deepcopy(attachment)
+        data_label_override = (first_line.data_label_override
+                               if first_line.data_label_override == second_line.data_label_override else None)
+        line_data = {'points': simplify(first_points + second_points[1:]), 'start': outside(start_attachment),
+                     'end': outside(end_attachment), 'properties': properties, 'auto_routed': False,
+                     'name': name, 'name_given': name_given, 'properties_defined': defined,
+                     'assembly': first_line.assembly_identifier}
+        if data_label_override is not None:
+            line_data['data_label_visibility'] = data_label_override
+        joined_line = self.add_line(line_data)
+        # lines tapped into either tube now tap into the joined line at the same point
+        for other_line in self.lines.values():
+            if other_line is joined_line or other_line.identifier in joined_identifiers:
+                continue
+            for which_end in ('start', 'end'):
+                attachment = getattr(other_line, which_end)
+                if attachment and attachment.get('kind') == 'line' and attachment.get('line') in joined_identifiers:
+                    old_line = first_line if attachment['line'] == first_line.identifier else second_line
+                    tap_point, _ = point_at_fraction(old_line.points, float(attachment.get('path_fraction', 0)))
+                    path_fraction = project_on_polyline(joined_line.points, tap_point)[0]
+                    path_fraction = 0.0 if path_fraction < 1e-6 else (1.0 if path_fraction > 1 - 1e-6
+                                                                     else path_fraction)
+                    setattr(other_line, which_end, {'kind': 'line', 'line': joined_line.identifier,
+                                                    'path_fraction': path_fraction})
+        old_names = (first_line.name, second_line.name)
+        for line in (first_line, second_line):
+            line.remove_labels()
+            self.removeItem(line)
+            self.lines.pop(line.identifier, None)
+        self.clearSelection()
+        if selected:
+            joined_line.setSelected(True)
+        self.message.emit(f"{old_names[0]} and {old_names[1]} joined into one tube, {joined_line.name} "
+                          f"({line_template_summary({'properties': joined_line.properties})}).")
+        return joined_line
 
     # ---- context menus --------------------------------------------------------
     def _target_at(self, scene_position):
@@ -7836,6 +8249,27 @@ class ResultsPanel(QWidget):
                                            f"velocity {format_number(section['velocity'], 3)} m/s · Reynolds "
                                            f"{format_number(section['reynolds_number'], 3)}"])
                 self._row_identifiers.append(line.identifier)
+        # tube-to-tube tees / crosses: centre pressure, total flow through, worst arm loss, arm flows
+        for junction in results.get('junctions', []):
+            def line_name(identifier):
+                return scene.lines[identifier].name if identifier in scene.lines else identifier
+            run_lines = [arm['line'] for arm in junction['arms'] if arm['role'] == 'run']
+            branch_lines = [arm['line'] for arm in junction['arms'] if arm['role'] == 'branch']
+            run_label = (line_name(run_lines[0]) if len(set(run_lines)) == 1
+                         else ' / '.join(line_name(identifier) for identifier in run_lines))
+            row_name = f"{junction['kind'].capitalize()} {run_label} ← {', '.join(map(line_name, branch_lines))}"
+            arm_text = ' · '.join(f"{arm['role']} {line_name(arm['line'])} "
+                                  f"{'in' if arm['mass_flow'] >= 0 else 'out'} "
+                                  f"{format_number(abs(arm['mass_flow']) / KILOGRAMS_PER_GRAM, 3)}"
+                                  for arm in junction['arms'])
+            through_flow = sum(arm['mass_flow'] for arm in junction['arms'] if arm['mass_flow'] > 0)
+            worst_loss = max((abs(arm['pressure_drop']) for arm in junction['arms']
+                              if not math.isnan(arm['pressure_drop'])), default=float('nan'))
+            add_table_row(self.table, [row_name, f"Line {junction['kind']}", '—',
+                                       junction['center_pressure'] / PASCALS_PER_PSI, '',
+                                       worst_loss / PASCALS_PER_PSI, through_flow / KILOGRAMS_PER_GRAM,
+                                       f"centre pressure; largest arm loss; {arm_text} g/s"])
+            self._row_identifiers.append(branch_lines[0] if branch_lines else run_lines[0])
         self.warning_list.clear()
         for identifier, text in results['warnings']:
             item = QListWidgetItem(f"⚠ {block_name(scene, identifier)}: {text}")
@@ -7998,7 +8432,10 @@ avoids every component. Or press <b>L</b> (Draw Line) and click horizontal/verti
 a port or line to finish, right-click/double-click to finish with a free end, Esc to cancel.
 Drag a segment to move it, drag an end to reconnect. Right-click a line to add or delete segments,
 auto-route, reverse or edit properties. Select several lines (Ctrl-click or rubber band),
-right-click → <b>Combine</b>.</p>
+right-click → <b>Combine</b>. Two tubes connected end to end, with nothing else at that point, are
+joined into one tube automatically (you are asked how to combine their values only when both have
+properties set). Where a tube taps into another tube, or three or more tube ends meet, the solver puts a
+tee there (a cross for four or more), with the same losses as the Tee block.</p>
 <p><b>Results</b> — mass flow and inlet→outlet ΔP are shown beside every tube (arrows show flow
 direction); block results beside each block. Middle-drag pans, wheel zooms, F fits.</p>
 <p><b>Analysis</b> — Scenarios tab stores toggle states and properties. Analysis → Size bypass
@@ -8642,6 +9079,40 @@ class MainWindow(QMainWindow):
             f"Are you sure?\n\n{names} {'has' if len(lines) == 1 else 'have'} defined properties "
             f"(length, bends{', name' if any(line.name_given for line in lines) else ''}). Delete "
             f"{'it' if len(lines) == 1 else 'them'}?") == QMessageBox.StandardButton.Yes
+
+    def ask_join_line_values(self, first_line, second_line):
+        """Two tubes with properties set now continue one another: add their lengths and bends
+        together ('sum'), use one tube's values ('first' / 'second'), or keep them apart (None)."""
+        summed = summed_line_properties(first_line.properties, second_line.properties)
+        rows = '\n'.join(f"  {line.name}:  {line_template_summary({'properties': line.properties})}"
+                         for line in (first_line, second_line))
+        different_size = abs(float(first_line.properties.get('inner_diameter', 0))
+                             - float(second_line.properties.get('inner_diameter', 0))) > 1e-9
+        box = QMessageBox(self)
+        box.setWindowTitle("Join tubes")
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setText(f"{first_line.name} and {second_line.name} now continue one another, so they will be "
+                    f"joined into one tube.\nBoth have their own values:\n\n{rows}\n\n"
+                    f"Which values should the joined tube use?")
+        if different_size:
+            box.setInformativeText(f"The tube sizes differ. Adding together keeps {first_line.name}'s tube "
+                                   f"size; choosing one tube uses its size.")
+        add_button = box.addButton(f"Add together ({format_number(float(summed['length']))} in, "
+                                   f"{bend_table_summary(summed).split(' (')[0]})",
+                                   QMessageBox.ButtonRole.AcceptRole)
+        first_button = box.addButton(f"Use {first_line.name}'s values", QMessageBox.ButtonRole.AcceptRole)
+        second_button = box.addButton(f"Use {second_line.name}'s values", QMessageBox.ButtonRole.AcceptRole)
+        keep_button = box.addButton("Keep as two tubes", QMessageBox.ButtonRole.RejectRole)
+        add_button.setProperty('accent', 'go')
+        keep_button.setProperty('accent', 'stop')
+        box.setDefaultButton(add_button)
+        box.setEscapeButton(keep_button)
+        box.exec()
+        clicked = box.clickedButton()
+        for button, choice in ((add_button, 'sum'), (first_button, 'first'), (second_button, 'second')):
+            if clicked == button:
+                return choice
+        return None
 
     def edit_pump_curves(self, block):
         if not self._unlock_for_editing(block):

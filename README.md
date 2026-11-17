@@ -13,7 +13,7 @@
 - **Assemblies.** Save a group of connected parts and their tubes as one named block. Lock it to select and move it as a unit, or unlock it to modify the parts; save it to the library and place copies.
 - **Plumbing lines.** Orthogonal tubes that route around every component, never over it.
   - Draw section by section, drag segments and ends, add or delete segments, and combine several lines into one.
-  - Lines can tap into other lines.
+  - Lines can tap into other lines; where a tube taps into another, or three or more tube ends meet, the solver puts a tee there (Tee-block losses). Two tubes connected end to end are joined into one automatically.
   - Each line's length and **bend table** (angle, radius, count) are set in its properties, independent of the drawn route. Lines with set properties turn blue and ask before deletion; named lines show their name; lines can be saved to the library.
 - **Flow solution.** Node pressures and element flows are solved together by damped Newton–Raphson.
   - Mass flow and ΔP are shown on every tube.
@@ -73,4 +73,4 @@ Python 3.9 or newer is required. To try the pump-curve import, right-click a pum
 
 ## Status
 
-Version 1.27. The solver passes its built-in self-test (`--selftest`), which covers closed-form orifice flow, Hagen–Poiseuille, Colebrook, the Cv relation, mass balances, orifice sizing, pump-curve interpolation and file upgrades. Verify the loss-coefficient defaults against your own hardware data before relying on results for design decisions.
+Version 1.28. The solver passes its built-in self-test (`--selftest`), which covers closed-form orifice flow, Hagen–Poiseuille, Colebrook, the Cv relation, mass balances, orifice sizing, pump-curve interpolation and file upgrades. Verify the loss-coefficient defaults against your own hardware data before relying on results for design decisions.
